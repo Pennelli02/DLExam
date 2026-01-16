@@ -10,6 +10,37 @@ from torchvision.models import vit_b_16, ViT_B_16_Weights
 # Qui saranno presenti i modelli in versione no pre trained
 # RESNET50
 
+def reshape (x: torch.Tensor) -> torch.Tensor:
+    """
+    Trasforma la sequenza di token del Transformer in una mappa di feature 2D
+    per il decoder convoluzionale (CUP).
+
+    Processo:
+    1. Calcola la dimensione spaziale (H, W) dalla lunghezza della sequenza.
+    2. Reshape da [B, N, D] a [B, H, W, D].
+    3. Permute per portare i canali in posizione 'Channel First' [B, D, H, W].
+
+    :param x: torch.Tensor di forma [B, 196, 768] (Output del Transformer)
+    :return: torch.Tensor di forma [B, 768, 14, 14] (Input per il Decoder)
+    """
+
+    batch_size, num_tokens, embed_dim = x.shape
+
+    # Calcoliamo la dimensione della griglia (es. sqrt(196) = 14)
+    grid_size = int(num_tokens**0.5)
+
+    # 1. Riordina i token in una griglia spaziale (H, W)
+    # Forma: [B, 14, 14, 768]
+    x = x.view(batch_size, grid_size, grid_size, embed_dim)
+
+    # 2. Sposta la dimensione dell'embedding (canali) in seconda posizione
+    # Forma finale: [B, 768, 14, 14]
+    # .contiguous() serve per riordinare la memoria dopo il permute
+    x = x.permute(0, 3, 1, 2).contiguous()
+
+    return x
+
+
 class Bottleneck(nn.Module):
     """
     Bottleneck block
@@ -48,10 +79,9 @@ class Bottleneck(nn.Module):
 
 #non è la versione completa, ma quella che serve per il TransUNet
 class ResNet50(nn.Module):
-    def __init__(self, in_channels: int, layers: list[int] = [3, 4, 6, 3]):
+    def __init__(self, in_channels: int):
         super().__init__()
         self.in_channels = in_channels
-        self.layers = layers
 
         # Initial convolution and max pooling layers
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False) # 112x112x64
