@@ -14,7 +14,7 @@ Il transformer encoder segue le caratteristiche di ViT-B16 no pretrained
 ## Paper
 ### Dataset
 2 dataset:
- - Synapse multi-organ segmentation dataset
+ - Synapse multi-organ segmentation dataset (9 classi)
  - The ACDC challenge
 ### Architettura
 (tutto pretrained però proviamo a implementare a mano)

@@ -1,4 +1,3 @@
-from unittest import skipIf
 
 import torch
 import torchvision
@@ -66,17 +65,18 @@ class Bottleneck(nn.Module):
         residual = x
         if self.downsample is not None:
             residual = self.downsample(x)
-        out = self.conv1(x) # Riduce i canali (bottleneck)
+        out = self.conv1(x)  # Riduce i canali (bottleneck)
         out = self.bn1(out)
         out = self.relu(out)
-        out = self.conv2(out) # FA IL DOWNSAMPLING SPAZIALE (se stride=2)
+        out = self.conv2(out)  # FA IL DOWNSAMPLING SPAZIALE (se stride=2)
         out = self.bn2(out)
         out = self.relu(out)
-        out = self.conv3(out) # Espande i canali (expansion)
+        out = self.conv3(out)  # Espande i canali (expansion)
         out = self.bn3(out)
         out = residual + out
         out = self.relu(out)
         return out
+
 
 #non è la versione completa, ma quella che serve per il TransUNet
 class ResNet50(nn.Module):
@@ -85,10 +85,10 @@ class ResNet50(nn.Module):
         self.in_channels = in_channels
 
         # Initial convolution and max pooling layers
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False) # 112x112x64
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 112x112x64
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # 56x56x64
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)  # 56x56x64
 
         # ============ LAYER 1: 56x56x64 → 56x56x256 ============
         # Primo blocco: deve espandere da 64 a 256 canali
@@ -136,16 +136,16 @@ class ResNet50(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x1 = self.maxpool(x) # downsample 1/2
+        x1 = self.maxpool(x)  # downsample 1/2
 
         x = self.layer1_block1(x1)
         x = self.layer1_block2(x)
-        x2 = self.layer1_block3(x) #downsample 1/4
+        x2 = self.layer1_block3(x)  #downsample 1/4
 
         x = self.layer2_block1(x2)
         x = self.layer2_block2(x)
         x = self.layer2_block3(x)
-        x3 = self.layer2_block4(x) #downsample 1/8
+        x3 = self.layer2_block4(x)  #downsample 1/8
 
         x = self.layer3_block1(x3)
         x = self.layer3_block2(x)
@@ -160,7 +160,7 @@ class ResNet50(nn.Module):
 class MultiheadSelfAttentionBlock(nn.Module):
     # Creates a multi-head self-attention block
     # valori presente nel paper non risulti qui sia presente un dropout
-    def __init__(self, embed_dim: int = 768, num_heads: int= 12, dropout: float = 0):
+    def __init__(self, embed_dim: int = 768, num_heads: int = 12, dropout: float = 0):
         super().__init__()
 
         self.norm1 = nn.LayerNorm(normalized_shape=embed_dim)
@@ -179,13 +179,14 @@ class MultiheadSelfAttentionBlock(nn.Module):
         attn_output, _ = self.attn(query=x, key=x, value=x, need_weights=False)
         return attn_output
 
+
 class MLPBlock(nn.Module):
     # The MLP contains two layers with a GELU non-linearity
     # Dropout, when used, is applied after every dense layer except for the qkv-projections and directly after adding
     # positional- to patch embeddings
     # layer norm -> linear layer -> non-linear layer -> dropout -> linear layer -> dropout
     # paper dropout= 0.1
-    def __init__(self, embed_dim: int = 768, mlp_size= 3072, dropout: float = 0.1):
+    def __init__(self, embed_dim: int = 768, mlp_size=3072, dropout: float = 0.1):
         super().__init__()
         self.norm1 = nn.LayerNorm(normalized_shape=embed_dim)
 
@@ -202,8 +203,10 @@ class MLPBlock(nn.Module):
         x = self.mlp(x)
         return x
 
+
 class TransformerEncoderBlock(nn.Module):
-    def __init__(self, embed_dim: int = 768, num_heads: int= 12, mlp_size= 3072, dropout: float = 0.1, attn_dropout: float = 0):
+    def __init__(self, embed_dim: int = 768, num_heads: int = 12, mlp_size=3072, dropout: float = 0.1,
+                 attn_dropout: float = 0):
         super().__init__()
 
         self.msa_block = MultiheadSelfAttentionBlock(embed_dim, num_heads, dropout=attn_dropout)
@@ -269,21 +272,17 @@ class Encoder(nn.Module):
         return x, skips
 
 
-
-
-
-
 # ----------------------------------------------------------------------------
 # pretrained models
 class PTResnet(nn.Module):
     def __init__(self):
         super().__init__()
         backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu) #1/2
+        self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)  #1/2
         self.maxpool = backbone.maxpool
-        self.layer1 = backbone.layer1 #1/4
-        self.layer2 = backbone.layer2 #1/8
-        self.layer3 = backbone.layer3 #output
+        self.layer1 = backbone.layer1  #1/4
+        self.layer2 = backbone.layer2  #1/8
+        self.layer3 = backbone.layer3  #output
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         x = self.fs(x)
@@ -321,7 +320,7 @@ class PreTrainedVit(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x arriva già proiettato a [B, 196, 768] dalla Conv 1x1 dell'Encoder
         # Aggiungiamo i pesi pre-addestrati della posizione
-        x = x + self.position_embedding # per la formula 1 del paper
+        x = x + self.position_embedding  # per la formula 1 del paper
         x = self.dropout(x)
 
         # Passiamo attraverso i 12 blocchi del Transformer di torchvision
@@ -329,6 +328,7 @@ class PreTrainedVit(nn.Module):
 
         x = self.norm(x)
         return x
+
 
 class PT_Encoder(nn.Module):
     def __init__(self, img_size: int = 224):
@@ -346,8 +346,8 @@ class PT_Encoder(nn.Module):
         x, skips = self.cnn(x)
 
         # proiezione e flatten
-        x = self.embedding_proj(x) # [B, 768, 14, 14]
-        x = self.flatten(x) # [B, 768, 196]
+        x = self.embedding_proj(x)  # [B, 768, 14, 14]
+        x = self.flatten(x)  # [B, 768, 196]
 
         #dato che il Vit si aspetta [B, 196, 768]
         x = x.transpose(1, 2)
@@ -357,6 +357,7 @@ class PT_Encoder(nn.Module):
 
         # otteniamo l'output del transformer (x) e le skip connections del resnet skip
         return x, skips
+
 
 class CUPBlock(nn.Module):
     """
@@ -368,6 +369,7 @@ class CUPBlock(nn.Module):
         3. ReLU
         4. Upsample 2x (bilinear interpolation)
         """
+
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3)
@@ -376,11 +378,12 @@ class CUPBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
         if skip is not None:
-            x= torch.cat([x, skip], dim=1)
+            x = torch.cat([x, skip], dim=1)
         x = self.conv1(x)
         x = self.relu(x)
         x = self.upsample(x)
         return x
+
 
 class CUP(nn.Module):
     """
@@ -392,6 +395,7 @@ class CUP(nn.Module):
 
         Output: [B, out_channels, 224, 224]
         """
+
     def __init__(self, in_channels: int = 768, out_channels: int = 16):
         super().__init__()
         self.layer1 = CUPBlock(in_channels=in_channels, out_channels=512)
@@ -420,4 +424,12 @@ class CUP(nn.Module):
         return x
 
 
+class SegmentationHead(nn.Module):
+    def __init__(self, in_channels: int = 16, n_classes: int = 9):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        return x
 
