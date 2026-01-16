@@ -311,7 +311,7 @@ class PreTrainedVit(nn.Module):
         # e scartiamo il primo (quello del class_token) per avere [1, 196, 768]
         full_pos_embed = vit_base.encoder.pos_embedding  # Parameter
         self.position_embedding = nn.Parameter(full_pos_embed[:, 1:, :].detach().clone())
-
+        self.transformer_layers = vit_base.encoder.layers
         self.dropout = nn.Dropout(p=0.1)
 
         # 4. Normalizzazione finale
@@ -372,7 +372,7 @@ class CUPBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
@@ -427,9 +427,42 @@ class CUP(nn.Module):
 class SegmentationHead(nn.Module):
     def __init__(self, in_channels: int = 16, n_classes: int = 9):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.conv1 = nn.Conv2d(in_channels, n_classes, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         return x
+# versione pretrained
+class PT_TransUNet(nn.Module):
+    def __init__(self, img_size: int = 224, embed_dim: int = 768):
+        super().__init__()
+        self.encoder = PT_Encoder(img_size=img_size)
+        self.decoder = CUP(in_channels=embed_dim, out_channels=64)
+        self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),
+                                        nn.ReLU(inplace=True))
+        self.head = SegmentationHead(in_channels=16, n_classes=9)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, skip = self.encoder(x)
+        x = reshape(x)
+        x = self.decoder(x, skip)
+        x = self.last_layer(x)
+        x = self.head(x)
+        return x
+
+# versione non pretrained
+class NPT_TransUNet(nn.Module):
+    def __init__(self, img_size: int = 224, embed_dim: int = 768):
+        super().__init__()
+        self.encoder = Encoder(img_size=img_size)
+        self.decoder = CUP(in_channels=embed_dim, out_channels=64)
+        self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),nn.ReLU(inplace=True))
+        self.head = SegmentationHead(in_channels=16, n_classes=9)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, skip = self.encoder(x)
+        x = reshape(x)
+        x = self.decoder(x, skip)
+        x = self.last_layer(x)
+        x = self.head(x)
+        return x
