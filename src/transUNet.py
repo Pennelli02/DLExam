@@ -1,10 +1,10 @@
-from typing import Any
 
 import torch
 import torchvision
 from torch import nn
 from torchvision import models
 from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import vit_b_16, ViT_B_16_Weights
 
 #---------------------------------------------------------------
 # Qui saranno presenti i modelli in versione no pre trained
@@ -101,7 +101,7 @@ class ResNet50(nn.Module):
 
         # OUTPUT 14x14x1024
 
-    def forward(self, x: torch.Tensor) -> tuple[Any, list[Any]]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -264,3 +264,66 @@ class PTResnet(nn.Module):
         x3 = x
         out = self.layer3(x)
         return out, [x1, x2, x3]
+
+
+class PreTrainedVit(nn.Module):
+    def __init__(self, img_size: int = 224, embed_dim: int = 768):
+        # 1. Carichiamo il modello ViT-Base ufficiale di PyTorch con pesi ImageNet
+        # Usiamo ViT-B/16 perché ha embed_dim=768 e 12 layer, proprio come TransUNet
+        weights = ViT_B_16_Weights.IMAGENET1K_V1
+        vit_base = vit_b_16(weights=weights)
+
+        # 2. Embedding e Positional Embedding
+        # Il TransUNet non usa il class_token, quindi dobbiamo gestire i pesi
+        self.num_patches = (img_size // 16) ** 2  # 196
+
+        # Estraiamo i pesi del positional embedding originale [1, 197, 768]
+        # e scartiamo il primo (quello del class_token) per avere [1, 196, 768]
+        full_pos_embed = vit_base.encoder.pos_embedding  # Parameter
+        self.position_embedding = nn.Parameter(full_pos_embed[:, 1:, :].detach().clone())
+
+        self.dropout = nn.Dropout(p=0.1)
+
+        # 4. Normalizzazione finale
+        self.norm = vit_base.encoder.ln
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x arriva già proiettato a [B, 196, 768] dalla Conv 1x1 dell'Encoder
+        # Aggiungiamo i pesi pre-addestrati della posizione
+        x = x + self.position_embedding # per la formula 1 del paper
+        x = self.dropout(x)
+
+        # Passiamo attraverso i 12 blocchi del Transformer di torchvision
+        x = self.transformer_layers(x)
+
+        x = self.norm(x)
+        return x
+
+class PT_Encoder(nn.Module):
+    def __init__(self, img_size: int = 224):
+        super().__init__()
+
+        self.cnn = PTResnet()
+
+        # Proiezione canali (come da paper: 1024 -> 768)
+        self.embedding_proj = nn.Conv2d(1024, 768, kernel_size=1)
+        self.flatten = nn.Flatten(2)
+        self.vit = PreTrainedVit(img_size=img_size)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        # CNN extractor feature
+        x, skips = self.cnn(x)
+
+        # proiezione e flatten
+        x = self.embedding_proj(x) # [B, 768, 14, 14]
+        x = self.flatten(x) # [B, 768, 196]
+
+        #dato che il Vit si aspetta [B, 196, 768]
+        x = x.transpose(1, 2)
+
+        #transformer part
+        x = self.vit(x)
+
+        # otteniamo l'output del transformer (x) e le skip connections del resnet skip
+        return x, skips
+
