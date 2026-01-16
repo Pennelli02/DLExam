@@ -1,3 +1,4 @@
+from unittest import skipIf
 
 import torch
 import torchvision
@@ -356,4 +357,67 @@ class PT_Encoder(nn.Module):
 
         # otteniamo l'output del transformer (x) e le skip connections del resnet skip
         return x, skips
+
+class CUPBlock(nn.Module):
+    """
+        Cascaded Upsampler Block per TransUNet Decoder.
+
+        Fa:
+        1. (Opzionale) Concatena con skip connection
+        2. Conv 3x3 per fondere le feature
+        3. ReLU
+        4. Upsample 2x (bilinear interpolation)
+        """
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3)
+        self.relu = nn.ReLU(inplace=True)
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
+        if skip is not None:
+            x= torch.cat([x, skip], dim=1)
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.upsample(x)
+        return x
+
+class CUP(nn.Module):
+    """
+        Cascaded Upsampler (CUP) - Decoder di TransUNet.
+
+        Prende:
+        - Feature dal Transformer reshaped: [B, 196, 768]
+        - Skip connections: [skip1 (112x112x64), skip2 (56x56x256), skip3 (28x28x512)]
+
+        Output: [B, out_channels, 224, 224]
+        """
+    def __init__(self, in_channels: int = 768, out_channels: int = 16):
+        super().__init__()
+        self.layer1 = CUPBlock(in_channels=in_channels, out_channels=512)
+        self.layer2 = CUPBlock(in_channels=512, out_channels=256)
+        self.layer3 = CUPBlock(in_channels=256, out_channels=128)
+        self.layer4 = CUPBlock(in_channels=128, out_channels=64)
+
+    def forward(self, x: torch.Tensor, skip_cnn: list[torch.Tensor]) -> torch.Tensor:
+        """
+         Cascaded Upsampler (CUP) - Decoder di TransUNet (esattamente come nel paper).
+
+            Architettura
+            - Input: [B, 768, 14, 14]
+            - CUP Block 1: 14x14x768 → 28x28x512 (no skip)
+            - CUP Block 2: 28x28x512 + skip (28x28x512) → 56x56x256
+            - CUP Block 3: 56x56x256 + skip (56x56x256) → 112x112x128
+            - CUP Block 4: 112x112x128 + skip (112x112x64) → 224x224x64 siamo giusto prima della convoluzione e segmentation head
+                :param x:
+                :param skip_cnn [1/2, 1/4, 1/8]:
+                :return: x
+        """
+        x = self.layer1(x)
+        x = self.layer2(x, skip_cnn[2])
+        x = self.layer3(x, skip_cnn[1])
+        x = self.layer4(x, skip_cnn[0])
+        return x
+
+
 

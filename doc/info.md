@@ -68,3 +68,16 @@ x = x.view(-1, 14, 14, 768)
 # Spostiamo l'embedding nella dimensione dei canali per le Conv2d.
 x = x.permute(0, 3, 1, 2).contiguous()
 ```
+
+### Upsample
+nel codice si è riscontrato un problema dovuto alla scelta di quale operatore per fare upsampling:
+- nn.convTraspose2d() trainable
+- nn.unSample() not trainable 
+
+Sembra dai forum di pytorch che per la segmentazione sia meglio upSample() per la segmentazione quindi procedo.
+
+La ConvTranspose2d soffre spesso di un problema chiamato effetto a scacchiera. Poiché ha pesi addestrabili e sovrappone i calcoli durante l'espansione, può creare dei pattern ripetitivi che disturbano i bordi della segmentazione. In medicina, dove la precisione del bordo di un organo è vitale, questo è un grosso rischio.
+Secondo l'articolo ["Deconvolution and Checkerboard Artifacts" (Odena et al.)](https://distill.pub/2016/deconv-checkerboard/?ref=mlq-ai) risulta molto più vantaggioso usare l'unsampling con metodi nearest e bilinear dato che non crea artefatti nell'immagine.
+L'algoritmo di interpolazione bilineare è meno efficiente dal punto di vista computazionale rispetto al metodo "near neighbor", ma offre un'approssimazione più precisa. Il valore di un singolo pixel viene calcolato come media ponderata di tutti gli altri valori in base alle distanze.
+
+Nel codice verrà utilizzato **nn.Upsample(mode="bilinear")**
