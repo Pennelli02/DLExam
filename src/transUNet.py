@@ -3,6 +3,8 @@ from typing import Any
 import torch
 import torchvision
 from torch import nn
+from torchvision import models
+from torchvision.models import resnet50, ResNet50_Weights
 
 #---------------------------------------------------------------
 # Qui saranno presenti i modelli in versione no pre trained
@@ -242,3 +244,23 @@ class Encoder(nn.Module):
 
 # ----------------------------------------------------------------------------
 # pretrained models
+class PTResnet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu) #1/2
+        self.maxpool = backbone.maxpool
+        self.layer1 = backbone.layer1 #1/4
+        self.layer2 = backbone.layer2 #1/8
+        self.layer3 = backbone.layer3 #output
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        x = self.fs(x)
+        x1 = x
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x2 = x
+        x = self.layer2(x)
+        x3 = x
+        out = self.layer3(x)
+        return out, [x1, x2, x3]
