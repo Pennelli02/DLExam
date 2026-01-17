@@ -81,3 +81,82 @@ Secondo l'articolo ["Deconvolution and Checkerboard Artifacts" (Odena et al.)](h
 L'algoritmo di interpolazione bilineare è meno efficiente dal punto di vista computazionale rispetto al metodo "near neighbor", ma offre un'approssimazione più precisa. Il valore di un singolo pixel viene calcolato come media ponderata di tutti gli altri valori in base alle distanze.
 
 Nel codice verrà utilizzato **nn.Upsample(mode="bilinear")**
+
+### test model paper
+
+Le skip connections vengono salvate a diversi livelli del ResNet50 encoder:
+```python
+# Dal ResNet50.forward():
+x1 = self.relu(x)           # Skip 1: [B, 64, 112, 112]  ← 64 canali!
+x2 = self.layer1_block3(x)  # Skip 2: [B, 256, 56, 56]   ← 256 canali
+x3 = self.layer2_block4(x)  # Skip 3: [B, 512, 28, 28]   ← 512 canali
+
+return x4, [x1, x2, x3]
+```
+
+## 🔍 Perché Skip1 ha solo 64 canali?
+
+La **skip1** viene salvata **subito dopo Conv1 + BatchNorm + ReLU**, quando l'immagine è stata ridotta spazialmente a 112x112 ma i canali sono ancora **64**. Non è ancora passata attraverso il layer1 che espande i canali a 256.
+
+### Architettura Dettagliata ResNet50:
+```
+Input: 224x224x3
+   ↓ Conv1 (kernel=7, stride=2, padding=3)
+112x112x64  ← Skip1 salvata QUI! (64 canali)
+   ↓ BatchNorm + ReLU
+112x112x64
+   ↓ MaxPool (kernel=3, stride=2, padding=1)
+56x56x64
+   ↓ Layer1 (3x Bottleneck blocks)
+56x56x256  ← Skip2 salvata qui (256 canali)
+   ↓ Layer2 (4x Bottleneck blocks, stride=2 nel primo)
+28x28x512  ← Skip3 salvata qui (512 canali)
+   ↓ Layer3 (6x Bottleneck blocks, stride=2 nel primo)
+14x14x1024  ← Output CNN per Transformer
+```
+
+## ✅ Dimensioni Corrette del Decoder CUP
+```python
+class CUP(nn.Module):
+    def __init__(self, in_channels: int = 768, out_channels: int = 64):
+        super().__init__()
+        
+        # Block 1: 768 → 512 (no skip)
+        self.layer1 = CUPBlock(in_channels=768, out_channels=512, skip_channels=0)
+        
+        # Block 2: 512 + 512 (skip3) = 1024 totali → 256 out
+        self.layer2 = CUPBlock(in_channels=512, out_channels=256, skip_channels=512)
+        
+        # Block 3: 256 + 256 (skip2) = 512 totali → 128 out
+        self.layer3 = CUPBlock(in_channels=256, out_channels=128, skip_channels=256)
+        
+        # Block 4: 128 + 64 (skip1) = 192 totali → 64 out
+        self.layer4 = CUPBlock(in_channels=128, out_channels=64, skip_channels=64)
+```
+Flusso Completo del Decoder:
+```
+14x14x768 (dal Transformer)
+   ↓ CUP Block 1 (no skip)
+28x28x512
+   ↓ CUP Block 2 + Skip3 (28x28x512)
+   | Concatenazione: 512 + 512 = 1024 canali
+56x56x256
+   ↓ CUP Block 3 + Skip2 (56x56x256)
+   | Concatenazione: 256 + 256 = 512 canali
+112x112x128
+   ↓ CUP Block 4 + Skip1 (112x112x64)
+   | Concatenazione: 128 + 64 = 192 canali
+224x224x64
+   ↓ Last Conv Layer
+224x224x16
+   ↓ Segmentation Head
+224x224x9 (output finale)
+```
+
+| Layer Decoder | Input Decoder | Skip Connection | Canali Totali | Output     |
+|---------------|---------------|-----------------|---------------|------------|
+| CUP Block 1   | 14x14x768     | Nessuna         | 768           | 28x28x512  |
+| CUP Block 2   | 28x28x512     | 28x28x512       | 1024          | 56x56x256  |
+| CUP Block 3   | 56x56x256     | 56x56x256       | 512           | 112x112x128|
+| CUP Block 4   | 112x112x128   | 112x112x64      | **192**       | 224x224x64 |
+

@@ -135,10 +135,10 @@ class ResNet50(nn.Module):
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         x = self.conv1(x)
         x = self.bn1(x)
-        x = self.relu(x)
-        x1 = self.maxpool(x)  # downsample 1/2
+        x1 = self.relu(x)
+        x = self.maxpool(x1)  # downsample 1/2
 
-        x = self.layer1_block1(x1)
+        x = self.layer1_block1(x)
         x = self.layer1_block2(x)
         x2 = self.layer1_block3(x)  #downsample 1/4
 
@@ -300,6 +300,7 @@ class PreTrainedVit(nn.Module):
     def __init__(self, img_size: int = 224, embed_dim: int = 768):
         # 1. Carichiamo il modello ViT-Base ufficiale di PyTorch con pesi ImageNet
         # Usiamo ViT-B/16 perché ha embed_dim=768 e 12 layer, proprio come TransUNet
+        super().__init__()
         weights = ViT_B_16_Weights.IMAGENET1K_V1
         vit_base = vit_b_16(weights=weights)
 
@@ -399,9 +400,9 @@ class CUP(nn.Module):
     def __init__(self, in_channels: int = 768, out_channels: int = 16):
         super().__init__()
         self.layer1 = CUPBlock(in_channels=in_channels, out_channels=512)
-        self.layer2 = CUPBlock(in_channels=512, out_channels=256)
-        self.layer3 = CUPBlock(in_channels=256, out_channels=128)
-        self.layer4 = CUPBlock(in_channels=128, out_channels=64)
+        self.layer2 = CUPBlock(in_channels=1024, out_channels=256)
+        self.layer3 = CUPBlock(in_channels=512, out_channels=128)
+        self.layer4 = CUPBlock(in_channels=128+64, out_channels=64)
 
     def forward(self, x: torch.Tensor, skip_cnn: list[torch.Tensor]) -> torch.Tensor:
         """
@@ -466,3 +467,344 @@ class NPT_TransUNet(nn.Module):
         x = self.last_layer(x)
         x = self.head(x)
         return x
+
+
+import torch
+import torch.nn as nn
+
+
+def test_resnet50_encoder():
+    """Test dell'encoder ResNet50 custom (non pretrained)"""
+    print("=" * 80)
+    print("TEST 1: ResNet50 Custom Encoder")
+    print("=" * 80)
+
+    model = ResNet50(in_channels=3)
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        output, skips = model(dummy_input)
+
+    print(f"\n Output CNN: {output.shape}")
+    print(f"   Expected: torch.Size([2, 1024, 14, 14])")
+
+    print(f"\n Skip Connections:")
+    print(f"   Skip 1 (1/2): {skips[0].shape} - Expected: [2, 64, 112, 112]")
+    print(f"   Skip 2 (1/4): {skips[1].shape} - Expected: [2, 256, 56, 56]")
+    print(f"   Skip 3 (1/8): {skips[2].shape} - Expected: [2, 512, 28, 28]")
+
+    # Verifica dimensioni
+    success = True
+    if output.shape != (2, 1024, 14, 14):
+        print(f"\n Output shape errato!")
+        success = False
+    if skips[0].shape != (2, 64, 112, 112):
+        print(f"\n Skip1 errato! Got {skips[0].shape}")
+        success = False
+    if skips[1].shape != (2, 256, 56, 56):
+        print(f"\n Skip2 errato! Got {skips[1].shape}")
+        success = False
+    if skips[2].shape != (2, 512, 28, 28):
+        print(f"\n Skip3 errato! Got {skips[2].shape}")
+        success = False
+
+    if success:
+        print("\n ResNet50 PASSATO!")
+    return success
+
+
+def test_pretrained_resnet():
+    """Test dell'encoder ResNet50 pretrained"""
+    print("\n" + "=" * 80)
+    print("TEST 2: PTResnet (Pretrained) Encoder")
+    print("=" * 80)
+
+    model = PTResnet()
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        output, skips = model(dummy_input)
+
+    print(f"\n Output CNN: {output.shape}")
+    print(f"   Expected: torch.Size([2, 1024, 14, 14])")
+
+    print(f"\n Skip Connections:")
+    print(f"   Skip 1 (1/2): {skips[0].shape} - Expected: [2, 64, 112, 112]")
+    print(f"   Skip 2 (1/4): {skips[1].shape} - Expected: [2, 256, 56, 56]")
+    print(f"   Skip 3 (1/8): {skips[2].shape} - Expected: [2, 512, 28, 28]")
+
+    # Verifica dimensioni
+    success = True
+    if output.shape != (2, 1024, 14, 14):
+        print(f"\n Output shape errato!")
+        success = False
+    if skips[0].shape != (2, 64, 112, 112):
+        print(f"\n Skip1 errato! Got {skips[0].shape}")
+        success = False
+    if skips[1].shape != (2, 256, 56, 56):
+        print(f"\n Skip2 errato! Got {skips[1].shape}")
+        success = False
+    if skips[2].shape != (2, 512, 28, 28):
+        print(f"\n Skip3 errato! Got {skips[2].shape}")
+        success = False
+
+    if success:
+        print("\n PTResnet PASSATO!")
+    return success
+
+
+def test_custom_encoder():
+    """Test dell'encoder completo (CNN + Transformer) non pretrained"""
+    print("\n" + "=" * 80)
+    print("TEST 3: Encoder Completo (Custom CNN + Transformer)")
+    print("=" * 80)
+
+    model = Encoder(img_size=224, in_channels=3, embed_dim=768)
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        tokens, skips = model(dummy_input)
+
+    print(f"\n Output Transformer: {tokens.shape}")
+    print(f"   Expected: torch.Size([2, 196, 768])")
+
+    print(f"\n Skip Connections:")
+    print(f"   Skip 1: {skips[0].shape} - Expected: [2, 64, 112, 112]")
+    print(f"   Skip 2: {skips[1].shape} - Expected: [2, 256, 56, 56]")
+    print(f"   Skip 3: {skips[2].shape} - Expected: [2, 512, 28, 28]")
+
+    # Verifica dimensioni
+    success = True
+    if tokens.shape != (2, 196, 768):
+        print(f"\n Tokens shape errato! Got {tokens.shape}")
+        success = False
+    if skips[0].shape != (2, 64, 112, 112):
+        print(f"\n Skip1 errato! Got {skips[0].shape}")
+        success = False
+    if skips[1].shape != (2, 256, 56, 56):
+        print(f"\n Skip2 errato! Got {skips[1].shape}")
+        success = False
+    if skips[2].shape != (2, 512, 28, 28):
+        print(f"\n Skip3 errato! Got {skips[2].shape}")
+        success = False
+
+    if success:
+        print("\n Encoder Custom PASSATO!")
+    return success
+
+
+def test_pretrained_encoder():
+    """Test dell'encoder pretrained completo"""
+    print("\n" + "=" * 80)
+    print("TEST 4: PT_Encoder (Pretrained ResNet + ViT)")
+    print("=" * 80)
+
+    model = PT_Encoder(img_size=224)
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        tokens, skips = model(dummy_input)
+
+    print(f"\n Output Transformer: {tokens.shape}")
+    print(f"   Expected: torch.Size([2, 196, 768])")
+
+    print(f"\n Skip Connections:")
+    print(f"   Skip 1: {skips[0].shape} - Expected: [2, 64, 112, 112]")
+    print(f"   Skip 2: {skips[1].shape} - Expected: [2, 256, 56, 56]")
+    print(f"   Skip 3: {skips[2].shape} - Expected: [2, 512, 28, 28]")
+
+    # Verifica dimensioni
+    success = True
+    if tokens.shape != (2, 196, 768):
+        print(f"\n Tokens shape errato! Got {tokens.shape}")
+        success = False
+    if skips[0].shape != (2, 64, 112, 112):
+        print(f"\n Skip1 errato! Got {skips[0].shape}")
+        success = False
+    if skips[1].shape != (2, 256, 56, 56):
+        print(f"\n Skip2 errato! Got {skips[1].shape}")
+        success = False
+    if skips[2].shape != (2, 512, 28, 28):
+        print(f"\n Skip3 errato! Got {skips[2].shape}")
+        success = False
+
+    if success:
+        print("\n PT_Encoder PASSATO!")
+    return success
+
+
+def test_decoder():
+    """Test del decoder CUP"""
+    print("\n" + "=" * 80)
+    print("TEST 5: Decoder CUP")
+    print("=" * 80)
+
+    decoder = CUP(in_channels=768, out_channels=64)
+
+    # Simula input
+    x = torch.randn(2, 768, 14, 14)
+    skip1 = torch.randn(2, 64, 112, 112)
+    skip2 = torch.randn(2, 256, 56, 56)
+    skip3 = torch.randn(2, 512, 28, 28)
+
+    print(f"\n Input decoder: {x.shape}")
+    print(f"   Skip 1: {skip1.shape}")
+    print(f"   Skip 2: {skip2.shape}")
+    print(f"   Skip 3: {skip3.shape}")
+
+    with torch.no_grad():
+        output = decoder(x, [skip1, skip2, skip3])
+
+    print(f"\n Output decoder: {output.shape}")
+    print(f"   Expected: torch.Size([2, 64, 224, 224])")
+
+    success = output.shape == (2, 64, 224, 224)
+    if not success:
+        print(f"\n Decoder output errato! Got {output.shape}")
+    else:
+        print("\n Decoder CUP PASSATO!")
+
+    return success
+
+
+def test_full_npt_transunet():
+    """Test del modello completo NPT_TransUNet (non pretrained)"""
+    print("\n" + "=" * 80)
+    print("TEST 6: NPT_TransUNet COMPLETO (Non Pretrained)")
+    print("=" * 80)
+
+    model = NPT_TransUNet(img_size=224, embed_dim=768)
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        output = model(dummy_input)
+
+    print(f"\n Output finale: {output.shape}")
+    print(f"   Expected: torch.Size([2, 9, 224, 224])")
+
+    success = output.shape == (2, 9, 224, 224)
+    if not success:
+        print(f"\n Output errato! Got {output.shape}")
+    else:
+        print("\n NPT_TransUNet COMPLETO PASSATO!")
+
+    return success
+
+
+def test_full_pt_transunet():
+    """Test del modello completo PT_TransUNet (pretrained)"""
+    print("\n" + "=" * 80)
+    print("TEST 7: PT_TransUNet COMPLETO (Pretrained)")
+    print("=" * 80)
+
+    model = PT_TransUNet(img_size=224, embed_dim=768)
+    dummy_input = torch.randn(2, 3, 224, 224)
+
+    print(f"\n Input: {dummy_input.shape}")
+
+    with torch.no_grad():
+        output = model(dummy_input)
+
+    print(f"\n Output finale: {output.shape}")
+    print(f"   Expected: torch.Size([2, 9, 224, 224])")
+
+    success = output.shape == (2, 9, 224, 224)
+    if not success:
+        print(f"\n Output errato! Got {output.shape}")
+    else:
+        print("\n PT_TransUNet COMPLETO PASSATO!")
+
+    return success
+
+
+def run_all_tests():
+    """Esegue tutti i test in sequenza"""
+    print("\n" + "|" * 80)
+    print("|" + " " * 78 + "|")
+    print("|" + " " * 25 + "TEST SUITE COMPLETO" + " " * 34 + "|")
+    print("|" + " " * 78 + "|")
+    print("|" * 80 + "\n")
+
+    results = []
+
+    try:
+        results.append(("ResNet50 Custom", test_resnet50_encoder()))
+    except Exception as e:
+        print(f"\n ERRORE in ResNet50: {e}")
+        results.append(("ResNet50 Custom", False))
+
+    try:
+        results.append(("PTResnet", test_pretrained_resnet()))
+    except Exception as e:
+        print(f"\n ERRORE in PTResnet: {e}")
+        results.append(("PTResnet", False))
+
+    try:
+        results.append(("Encoder Custom", test_custom_encoder()))
+    except Exception as e:
+        print(f"\n ERRORE in Encoder Custom: {e}")
+        results.append(("Encoder Custom", False))
+
+    try:
+        results.append(("PT_Encoder", test_pretrained_encoder()))
+    except Exception as e:
+        print(f"\n ERRORE in PT_Encoder: {e}")
+        results.append(("PT_Encoder", False))
+
+    try:
+        results.append(("Decoder CUP", test_decoder()))
+    except Exception as e:
+        print(f"\n ERRORE in Decoder: {e}")
+        results.append(("Decoder CUP", False))
+
+    try:
+        results.append(("NPT_TransUNet", test_full_npt_transunet()))
+    except Exception as e:
+        print(f"\n ERRORE in NPT_TransUNet: {e}")
+        results.append(("NPT_TransUNet", False))
+
+    try:
+        results.append(("PT_TransUNet", test_full_pt_transunet()))
+    except Exception as e:
+        print(f"\n ERRORE in PT_TransUNet: {e}")
+        results.append(("PT_TransUNet", False))
+
+    # Riepilogo finale
+    print("\n" + "|" * 80)
+    print("|" + " " * 78 + "|")
+    print("|" + " " * 28 + "RIEPILOGO FINALE" + " " * 34 + "|")
+    print("|" + " " * 78 + "|")
+    print("|" * 80)
+
+    passed = sum(1 for _, success in results if success)
+    total = len(results)
+
+    for test_name, success in results:
+        status = "PASSATO" if success else " FALLITO"
+        print(f"\n{test_name:30s} {status}")
+
+    print("\n" + "=" * 80)
+    print(f"TOTALE: {passed}/{total} test passati")
+
+    if passed == total:
+        print("\n TUTTI I TEST PASSATI! ")
+    else:
+        print(f"\n  {total - passed} test falliti - controlla gli errori sopra")
+
+    print("=" * 80 + "\n")
+
+
+# ESEGUI TUTTI I TEST
+if __name__ == "__main__":
+    with torch.no_grad():
+        run_all_tests()
