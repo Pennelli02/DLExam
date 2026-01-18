@@ -185,7 +185,7 @@ preprocess_synapse()
 ```
 dataset/project_transunet/
 ├── train_npz/      # ~2212 slice 2D (512×512)
-└── test_vol_h5/    # 12 volumi 3D (per validation)
+└── validation_vol_h5/    # 12 volumi 3D (per validation)
 ```
 
 **Note**: La cartella `RawData/Testing/` (20 volumi senza label) non viene utilizzata, seguendo l'implementazione del paper originale.
