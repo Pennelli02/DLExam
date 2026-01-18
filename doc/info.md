@@ -140,9 +140,52 @@ Flusso Completo del Decoder:
 ```
 
 | Layer Decoder | Input Decoder | Skip Connection | Canali Totali | Output     |
-|---------------|---------------|-----------------|---------------|------------|
-| CUP Block 1   | 14x14x768     | Nessuna         | 768           | 28x28x512  |
-| CUP Block 2   | 28x28x512     | 28x28x512       | 1024          | 56x56x256  |
-| CUP Block 3   | 56x56x256     | 56x56x256       | 512           | 112x112x128|
-| CUP Block 4   | 112x112x128   | 112x112x64      | **192**       | 224x224x64 |
+|---------------|---------------|-----------------|-----------|------------|
+| CUP Block 1   | 14x14x768     | Nessuna         | 768       | 28x28x512  |
+| CUP Block 2   | 28x28x512     | 28x28x512       | 1024      | 56x56x256  |
+| CUP Block 3   | 56x56x256     | 56x56x256       | 512       | 112x112x128|
+| CUP Block 4   | 112x112x128   | 112x112x64      | 192       | 224x224x64 |
 
+### Pre-Processing
+
+Il dataset Synapse contiene 30 scansioni CT volumetriche 3D che richiedono preprocessing per essere utilizzabili nel training di TransUNet.
+
+#### 1. Download Dataset
+```python
+getDataset()
+```
+Scarica automaticamente il dataset dal repository Synapse usando l'API con autenticazione token personale (richiede registrazione su synapse.org).
+
+#### 2. Estrazione File
+```python
+setup_synapse_dataset()
+```
+Estrae `RawData.zip` e organizza i file NIfTI nella struttura:
+```
+dataset/RawData/RawData/Training/
+├── img/    # 30 volumi CT (.nii.gz)
+└── label/  # 30 maschere di segmentazione
+```
+
+#### 3. Preprocessing
+```python
+preprocess_synapse()
+```
+
+**Operazioni principali:**
+
+- **HU Windowing**: `clip(image, -125, 275)` - finestra addominale standard per tessuti molli
+- **Normalization**: `(image + 125) / 400` - normalizzazione in range [0, 1]
+- **Dataset Split**: 18 training cases / 12 validation cases
+- **Format Conversion**:
+  - Training → 2D slices (`.npz`) per memory efficiency (~2212 slices)
+  - Validation → 3D volumes (`.h5`) per metriche volumetriche (Dice Score, Hausdorff Distance)
+
+**Output:**
+```
+dataset/project_transunet/
+├── train_npz/      # ~2212 slice 2D (512×512)
+└── test_vol_h5/    # 12 volumi 3D (per validation)
+```
+
+**Note**: La cartella `RawData/Testing/` (20 volumi senza label) non viene utilizzata, seguendo l'implementazione del paper originale.
