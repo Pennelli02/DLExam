@@ -1,3 +1,4 @@
+import random
 import zipfile
 from pathlib import Path
 import os
@@ -101,7 +102,7 @@ def setup_synapse_dataset():
         print("\n Setup incomplete - check directory structure")
         return False
 
-def preprocess_synapse():
+def preprocess_synapse(random_seed=None, train_ratio=0.6):
     # Percorsi corretti dopo estrazione
     raw_data_dir = os.path.join("dataset", "RawData", "RawData", "Training", "img")
     label_data_dir = os.path.join("dataset", "RawData", "RawData", "Training", "label")
@@ -123,16 +124,29 @@ def preprocess_synapse():
 
     print(f" Found {len(image_list)} volumes")
 
-    # Split secondo TransUNet paper (18 training / 12 validation)
-    # Questi sono gli ID esatti usati nel paper
-    train_ids = [5, 6, 7, 9, 10, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 37, 39, 40]
-    train_cases = [f"img{i:04d}" for i in train_ids]
+    if random_seed is None:
+        # Split secondo TransUNet paper (18 training / 12 validation)
+        # Questi sono gli ID esatti usati nel paper
+        train_ids = [5, 6, 7, 9, 10, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 37, 39, 40]
+        train_cases = [f"img{i:04d}" for i in train_ids]
 
-    all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
-    test_cases = [c for c in all_cases if c not in train_cases]
+        all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
+        test_cases = [c for c in all_cases if c not in train_cases]
 
-    print(f"Training: {len(train_cases)} cases")
-    print(f"Validation: {len(test_cases)} cases\n")
+        print(f"Training: {len(train_cases)} cases")
+        print(f"Validation: {len(test_cases)} cases\n")
+    elif random_seed is not None:
+        random.seed(random_seed)
+        all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
+        # Shuffle e split
+        random.shuffle(all_cases)
+        n_train = int(len(all_cases) * train_ratio)
+
+        train_cases = all_cases[:n_train]
+        test_cases = all_cases[n_train:]
+
+        print(f"Training: {len(train_cases)} cases - {sorted(train_cases)}")
+        print(f"Testing: {len(test_cases)} cases - {sorted(test_cases)}\n")
 
     train_slice_count = 0
     val_volume_count = 0

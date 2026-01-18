@@ -189,3 +189,5 @@ dataset/project_transunet/
 ```
 
 **Note**: La cartella `RawData/Testing/` (20 volumi senza label) non viene utilizzata, seguendo l'implementazione del paper originale.
+
+*alcune informazioni sono riprese da altri paper citati*
