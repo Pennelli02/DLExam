@@ -156,7 +156,7 @@ def preprocess_synapse():
         image = np.clip(image, -125, 275)
         image = (image + 125) / 400.0  # Normalizza a [0, 1]
 
-        # Determina train o test
+        # Determina train o validation
         is_train = case_name in train_cases
 
         if is_train:
