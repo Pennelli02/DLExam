@@ -1,2 +1,11 @@
 pre_trained: "True" # scelgo con vero o falso se usare il modello pretrained e non
 model_name: "TransUNet"
+dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
+
+type_tr: "SGD"
+lr: 0.01
+momentum: 0.9
+weight_decay: 1e-4
+batch: 24 # da valutare se è troppo grande
+n_iter_sy: 14000
+n_iter_ACDC: 24000

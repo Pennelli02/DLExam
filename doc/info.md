@@ -1,20 +1,9 @@
-# Appunti su paper 3d e progetto
-## Paper
-### Dataset
-Scegliere tra due dataset
-- Beyond the Cranial
-Vault (BTCV) (più plausibile) [link dataset](https://www.synapse.org/Synapse:syn3193805/files/)
--  Medical Segmentation Decathlon
-(MSD) (tante varianti pesanti da scegliere solo una)--> nel paper stato dell'arte in cervello e spleen [link dataset](http://medicaldecathlon.com/)
- ### Architettura 
-Il transformer encoder segue le caratteristiche di ViT-B16 no pretrained
-
-
 # Appunti su paper TransUNET
 ## Paper
 ### Dataset
 2 dataset:
- - Synapse multi-organ segmentation dataset (9 classi)
+ - Synapse multi-organ segmentation dataset (9 classi) si ricade in 9 classi perché seguono le procedure del paper [Domain Adaptive Relational Reasoning for 3D
+Multi-Organ Segmentation](https://arxiv.org/abs/2005.09120)
  - The ACDC challenge
 ### Architettura
 (tutto pretrained però proviamo a implementare a mano)
@@ -82,7 +71,7 @@ L'algoritmo di interpolazione bilineare è meno efficiente dal punto di vista co
 
 Nel codice verrà utilizzato **nn.Upsample(mode="bilinear")**
 
-### test model paper
+### Test model paper
 
 Le skip connections vengono salvate a diversi livelli del ResNet50 encoder:
 ```python
@@ -93,12 +82,9 @@ x3 = self.layer2_block4(x)  # Skip 3: [B, 512, 28, 28]   ← 512 canali
 
 return x4, [x1, x2, x3]
 ```
-
-## 🔍 Perché Skip1 ha solo 64 canali?
-
 La **skip1** viene salvata **subito dopo Conv1 + BatchNorm + ReLU**, quando l'immagine è stata ridotta spazialmente a 112x112 ma i canali sono ancora **64**. Non è ancora passata attraverso il layer1 che espande i canali a 256.
 
-### Architettura Dettagliata ResNet50:
+#### Architettura Dettagliata ResNet50:
 ```
 Input: 224x224x3
    ↓ Conv1 (kernel=7, stride=2, padding=3)
@@ -115,23 +101,23 @@ Input: 224x224x3
 14x14x1024  ← Output CNN per Transformer
 ```
 
-## ✅ Dimensioni Corrette del Decoder CUP
+#### Dimensioni Corrette del Decoder CUP
 ```python
 class CUP(nn.Module):
     def __init__(self, in_channels: int = 768, out_channels: int = 64):
         super().__init__()
         
         # Block 1: 768 → 512 (no skip)
-        self.layer1 = CUPBlock(in_channels=768, out_channels=512, skip_channels=0)
+        self.layer1 = CUPBlock(in_channels=768, out_channels=512)
         
         # Block 2: 512 + 512 (skip3) = 1024 totali → 256 out
-        self.layer2 = CUPBlock(in_channels=512, out_channels=256, skip_channels=512)
+        self.layer2 = CUPBlock(in_channels=1024, out_channels=256)
         
         # Block 3: 256 + 256 (skip2) = 512 totali → 128 out
-        self.layer3 = CUPBlock(in_channels=256, out_channels=128, skip_channels=256)
+        self.layer3 = CUPBlock(in_channels=512, out_channels=128)
         
         # Block 4: 128 + 64 (skip1) = 192 totali → 64 out
-        self.layer4 = CUPBlock(in_channels=128, out_channels=64, skip_channels=64)
+        self.layer4 = CUPBlock(in_channels=192, out_channels=64)
 ```
 Flusso Completo del Decoder:
 ```
