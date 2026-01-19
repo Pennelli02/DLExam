@@ -5,7 +5,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 # Importa i tipi speciali di tensori: Image, Mask, BoundingBox, etc.
 # Servono per dire a v2 come trattare ogni tipo di dato
@@ -110,24 +110,30 @@ class SynapseDataset(Dataset):
             'case_name': self.sample_list[idx].strip('\n')
         }
     # PIPELINE DI TRAINING
-    def get_train_transform(self):
-        # Funzione che crea la pipeline di augmentation per il training
-        # output_size: dimensione finale dell'immagine (TransUNet usa 224x224)
-        return v2.Compose([
-            # Ridimensiona immagine e maschera a 224x224
-            # antialias=True: applica anti-aliasing per immagini più smooth
-            v2.Resize(size=(self.opts.image_size, self.opts.image_size), antialias=True),
+def get_train_transform(opts):
+    # Funzione che crea la pipeline di augmentation per il training
+    # output_size: dimensione finale dell'immagine (TransUNet usa 224x224)
+    return v2.Compose([
+        # Ridimensiona immagine e maschera a 224x224
+        # antialias=True: applica anti-aliasing per immagini più smooth
+        v2.Resize(size=(opts.image_size, opts.image_size), antialias=True),
 
-            # Ruota casualmente l'immagine tra -20° e +20°
-            v2.RandomRotation(degrees=self.opts.degrees, expand=False),
+        # Ruota casualmente l'immagine tra -20° e +20°
+        v2.RandomRotation(degrees=opts.degrees, expand=False),
 
-            # Ribalta orizzontalmente con probabilità 50%
-            v2.RandomHorizontalFlip(p=self.opts.flip_prob),
+        # Ribalta orizzontalmente con probabilità 50%
+        v2.RandomHorizontalFlip(p=opts.flip_prob),
 
-            # Ribalta verticalmente con probabilità 50%
-            v2.RandomVerticalFlip(p=self.opts.flip_prob),
+        # Ribalta verticalmente con probabilità 50%
+        v2.RandomVerticalFlip(p=opts.flip_prob),
 
-            # Converte il tipo di dato in float32 compatibile con tv_tensor
-            v2.ToDtype(torch.float32, scale=False),
-        ])
+        # Converte il tipo di dato in float32 compatibile con tv_tensor
+        v2.ToDtype(torch.float32, scale=False),
+    ])
 
+# non sono sicuro di questa scelta di creare questa classe
+class MakeDataloader:
+    def __init__(self, opts):
+        self.opts = opts
+        self.train_dataloader = DataLoader(SynapseDataset(opts, opts.train_dir,'train', transform=get_train_transform(opts)), batch_size=opts.batch_size, shuffle=True)
+        self.validation_dataloader = DataLoader(SynapseDataset(opts, opts.validation_dir, 'val', transform=None), batch_size=opts.batch_size, shuffle=False)

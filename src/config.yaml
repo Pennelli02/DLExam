@@ -17,3 +17,6 @@ image_size: 224
 degrees: 20
 flip_prop: 0.5
 n_classes: 9
+
+train_dir: "src/dataset/project_transunet/train_npz"
+validation_dir: "src/dataset/project_transunet/validation_vol_h5"
