@@ -308,14 +308,19 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
     #     - spacing:(X, Y, Z)
 
     if test_save_path is not None and case is not None:
+        # Crea directory se non esiste
+        os.makedirs(test_save_path, exist_ok=True)
+
         img_itk = sitk.GetImageFromArray(image.astype(np.float32))
         prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
         lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
 
+        # Imposta spacing (in mm)
         img_itk.SetSpacing((1.0, 1.0, z_spacing))
         prd_itk.SetSpacing((1.0, 1.0, z_spacing))
         lab_itk.SetSpacing((1.0, 1.0, z_spacing))
 
+        # Salva file NIfTI
         sitk.WriteImage(prd_itk, f"{test_save_path}/{case}_pred.nii.gz")
         sitk.WriteImage(img_itk, f"{test_save_path}/{case}_img.nii.gz")
         sitk.WriteImage(lab_itk, f"{test_save_path}/{case}_gt.nii.gz")
