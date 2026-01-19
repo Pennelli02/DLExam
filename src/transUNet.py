@@ -469,9 +469,6 @@ class NPT_TransUNet(nn.Module):
         return x
 
 
-import torch
-import torch.nn as nn
-
 
 def test_resnet50_encoder():
     """Test dell'encoder ResNet50 custom (non pretrained)"""
