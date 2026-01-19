@@ -9,6 +9,11 @@ from rich.logging import RichHandler
 import numpy as np
 import torch
 
+
+from src.transUNet import PT_TransUNet, NPT_TransUNet
+from src.dataset import MakeDataloader
+
+
 def get_logger():
     FORMAT = "%(message)s"
     logging.basicConfig(
@@ -91,6 +96,16 @@ def train_loop(model, train, valid, opts):
 
 def main(opts):
     from visualizer import visualize
+    input_data = torch.randn(opts.batch_size, 3, opts.image_size, opts.image_size)
+    if opts.pre_trained and opts.model_name == "TransUNet":
+        model = PT_TransUNet()
+    elif opts.model_name == "NPTransUNet":
+        model = NPT_TransUNet()
+    else:
+        raise ValueError(f'Unknown model type')
+
+    #CL visualization
+    visualize(model, opts.model_name, input_data)
     pass
 
 if __name__ == '__main__':

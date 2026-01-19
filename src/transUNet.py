@@ -85,7 +85,7 @@ class ResNet50(nn.Module):
         self.in_channels = in_channels
 
         # Initial convolution and max pooling layers
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 112x112x64
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 112x112x64
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)  # 56x56x64
