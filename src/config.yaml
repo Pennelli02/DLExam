@@ -1,4 +1,4 @@
-pre_trained: "True" # scelgo con vero o falso se usare il modello pretrained e non
+pre_trained: True # scelgo con vero o falso se usare il modello pretrained e non
 model_name: "TransUNet"
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
@@ -24,5 +24,7 @@ validation_dir: "src/dataset/project_transunet/validation_vol_h5"
 
 log_every: 50
 batch_window: 20
-save_every: 1000
+save_every: 19 # così otteniamo 8 checkpoint
 checkpoint_dir: 'transunet_ckp'
+
+resume: True # impostato così indico di prendere l'ultimo checkpoint
