@@ -202,9 +202,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
 
             val_volume_count += 1
 
-    print(f"\n{'=' * 60}")
-    print(f"PREPROCESSING COMPLETE!")
-    print(f"{'=' * 60}")
+    print(f"PREPROCESSING COMPLETE!\n")
     print(f"Training slices: {train_slice_count}")
     print(f" Validation  volumes: {val_volume_count}")
     print(f"\nOutput:")
