@@ -136,4 +136,4 @@ class MakeDataloader:
     def __init__(self, opts):
         self.opts = opts
         self.train_dataloader = DataLoader(SynapseDataset(opts, opts.train_dir,'train', transform=get_train_transform(opts)), batch_size=opts.batch_size, shuffle=True)
-        self.validation_dataloader = DataLoader(SynapseDataset(opts, opts.validation_dir, 'val', transform=None), batch_size=opts.batch_size, shuffle=False)
+        self.validation_dataloader = DataLoader(SynapseDataset(opts, opts.validation_dir, 'val', transform=None), batch_size=1, shuffle=False)

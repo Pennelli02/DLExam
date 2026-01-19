@@ -6,9 +6,13 @@ import glob
 import numpy as np
 import nibabel as nib
 import h5py
+import torch
 from tqdm import tqdm
 import synapseclient
 import synapseutils
+import SimpleITK as sitk
+from torchvision.transforms import v2
+from torchvision.transforms import InterpolationMode
 
 def getDataset():
     # Percorso dove salvare i file
@@ -208,6 +212,117 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     print(f"\nOutput:")
     print(f"  Train: {train_out_dir}")
     print(f"  Validation:  {test_out_dir}")
+
+
+def calculate_metric_percase(param, param1):
+    pass
+
+
+def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, z_spacing=1):
+    """
+        Esegue l'inferenza slice-by-slice su un volume 3D usando un modello 2D
+        e calcola le metriche per ogni classe.
+        Replicando il protocollo di Zhou et al. e Yu et al.
+
+        Args:
+            image (Tensor): volume di input [1, Z, H, W]
+            label (Tensor): ground truth [1, Z, H, W]
+            net (nn.Module): modello di segmentazione 2D
+            classes (int): numero totale di classi (incluso background)
+            patch_size (tuple): dimensione di input richiesta dal modello
+            test_save_path (str): path per il salvataggio dei risultati (.nii.gz)
+            case (str): identificativo del paziente
+            z_spacing (float): spacing assiale (mm)
+        """
+    # Spostiamo i dati su CPU e li convertiamo in NumPy
+    # Rimuoviamo la dimensione batch: [1, Z, H, W] -> [Z, H, W]
+    # Questo facilita il loop slice-by-slice
+
+    image = image.squeeze(0).cpu().detach().numpy()
+    label = label.squeeze(0).cpu().detach().numpy()
+
+    # Inizializziamo il volume delle predizioni
+    # Stessa shape della label per facilitare il confronto voxel-wise
+
+    prediction = np.zeros_like(label)
+
+    #Definizione delle trasformazioni (torchvision v2)
+
+    resize_input = v2.Resize(
+        size=patch_size,
+        interpolation=InterpolationMode.BILINEAR,
+        antialias=True
+    )
+
+    resize_output = v2.Resize(
+        size=label.shape[1:],  # dimensioni originali (H, W)
+        interpolation=InterpolationMode.NEAREST
+    )
+
+    net.eval()
+
+    # Recuperiamo il device del modello
+    device = next(net.parameters()).device
+
+    with torch.inference_mode():
+        # Loop su ogni slice assiale
+        for z in range(image.shape[0]):
+            #Estrazione della singola fetta 2D
+            slice_2d = image[z]
+
+            #Conversione in tensore PyTorch [H, W] -> [1, 1, H, W] (Batch, Channel, Height, Width)
+            input_tensor = (
+                torch.from_numpy(slice_2d)
+                .unsqueeze(0)
+                .unsqueeze(0)
+                .float()
+                .to(device)
+            )
+
+            input_tensor = resize_input(input_tensor)
+
+            outputs = net(input_tensor)
+
+            # Argmax diretto sulle logits
+            out_slice = torch.argmax(outputs, dim=1).squeeze(0)
+
+            # Resize della predizione alle dimensioni originali
+            out_resized = resize_output(out_slice.unsqueeze(0)).squeeze(0)
+
+            # Salviamo la slice nel volume finale
+            prediction[z] = out_resized.cpu().numpy()
+
+    metric_list = []
+    # Si salta la classe 0 (background)
+    for cls in range(1, classes):
+        metric_list.append(
+            calculate_metric_percase(
+                prediction == cls,
+                label == cls
+            )
+        )
+
+    #Salvataggio opzionale dei risultati in formato NIfTI
+    #     SimpleITK usa l'ordine:
+    #     - array:  [Z, Y, X]
+    #     - spacing:(X, Y, Z)
+
+    if test_save_path is not None and case is not None:
+        img_itk = sitk.GetImageFromArray(image.astype(np.float32))
+        prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
+        lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
+
+        img_itk.SetSpacing((1.0, 1.0, z_spacing))
+        prd_itk.SetSpacing((1.0, 1.0, z_spacing))
+        lab_itk.SetSpacing((1.0, 1.0, z_spacing))
+
+        sitk.WriteImage(prd_itk, f"{test_save_path}/{case}_pred.nii.gz")
+        sitk.WriteImage(img_itk, f"{test_save_path}/{case}_img.nii.gz")
+        sitk.WriteImage(lab_itk, f"{test_save_path}/{case}_gt.nii.gz")
+
+    return metric_list
+        
+
 
 
 if __name__ == "__main__":
