@@ -13,6 +13,7 @@ import synapseutils
 import SimpleITK as sitk
 from torchvision.transforms import v2
 from torchvision.transforms import InterpolationMode
+from medpy import metric
 
 def getDataset():
     # Percorso dove salvare i file
@@ -214,8 +215,31 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     print(f"  Validation:  {test_out_dir}")
 
 
-def calculate_metric_percase(param, param1):
-    pass
+def calculate_metric_percase(pred, gt):
+        """
+        Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
+        """
+        # Convertiamo in binario (0 sfondo, 1 qualsiasi organo)
+        pred = (pred > 0).astype(float)
+        gt = (gt > 0).astype(float)
+
+        # Caso 1: Entrambi hanno l'organo (Situazione standard)
+        if pred.sum() > 0 and gt.sum() > 0:
+            dice = metric.binary.dc(pred, gt)
+            hd95 = metric.binary.hd95(pred, gt)
+            return dice, hd95
+
+        # Caso 2: Il modello trova un organo che non esiste (Falso Positivo)
+        # Il Dice è 0, la distanza HD95 non è definibile (spesso si mette un valore alto di default)
+        if pred.sum() > 0 and gt.sum() == 0:
+            return 0.0, 100.0  # 100mm è una penalità standard
+
+        # Caso 3: L'organo esiste ma il modello non vede nulla (Falso Negativo)
+        if pred.sum() == 0 and gt.sum() > 0:
+            return 0.0, 100.0
+
+        # Caso 4: Entrambi vuoti (Il modello ha predetto correttamente lo sfondo)
+        return 1.0, 0.0
 
 
 def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, z_spacing=1):

@@ -11,7 +11,7 @@ import torch
 
 
 from src.transUNet import PT_TransUNet, NPT_TransUNet
-from src.dataset import MakeDataloader
+from src.dataset import SynapseDataset
 
 
 def get_logger():
