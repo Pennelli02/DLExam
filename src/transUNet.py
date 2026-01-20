@@ -285,6 +285,9 @@ class PTResnet(nn.Module):
         self.layer3 = backbone.layer3  #output
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        # Se l'input è grayscale, replica i canali perché in pre trained Resnet si aspetta tre canali e non uno
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
         x = self.fs(x)
         x1 = x
         x = self.maxpool(x)

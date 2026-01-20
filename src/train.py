@@ -96,14 +96,11 @@ def train_loop(model, train, valid, opts):
 
 def main(opts):
     from visualizer import visualize
-    input_data = torch.randn(opts.batch_size, 3, opts.image_size, opts.image_size)
-    if opts.pre_trained and opts.model_name == "TransUNet":
+    input_data = torch.randn(opts.batch_size, 1, opts.image_size, opts.image_size)
+    if opts.pre_trained:
         model = PT_TransUNet()
-    elif opts.model_name == "NPTransUNet":
-        model = NPT_TransUNet()
     else:
-        raise ValueError(f'Unknown model type')
-
+        model = NPT_TransUNet()
     #CL visualization
     visualize(model, opts.model_name, input_data)
     pass
