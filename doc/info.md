@@ -197,3 +197,6 @@ per una maggiore efficienza e perché più recente utilizzeremo v2 per l'augment
 
 ### Inference
 L'inferenza è stata implementata seguendo un protocollo slice-by-slice coerente con lo stato dell'arte (Zhou et al. [19]) . Per garantire la massima fedeltà anatomica, è stata utilizzata una pipeline di trasformazione differenziata: interpolazione bilineare con antialiasing per il ricampionamento delle scansioni CT e interpolazione nearest-neighbor per le maschere di segmentazione, preservando l'integrità delle etichette categoriali durante il volume-stacking.
+
+### Loss
+Risulta dall'articolo che il modello nel training usa come loss una funzione combinata tra DiceLoss e CrossEntropy Loss

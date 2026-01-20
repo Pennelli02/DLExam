@@ -242,7 +242,7 @@ def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, f
         return 1.0, 0.0
 
 
-def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, z_spacing=1):
+def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, test_mode=False ,z_spacing=1):
     """
         Esegue l'inferenza slice-by-slice su un volume 3D usando un modello 2D
         e calcola le metriche per ogni classe.
@@ -331,7 +331,7 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
     #     - array:  [Z, Y, X]
     #     - spacing:(X, Y, Z)
 
-    if test_save_path is not None and case is not None:
+    if test_save_path is not None and test_mode:
         # Crea directory se non esiste
         os.makedirs(test_save_path, exist_ok=True)
 

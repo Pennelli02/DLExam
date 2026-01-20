@@ -10,7 +10,9 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 
+import src.dataset
 from src.transUNet import PT_TransUNet, NPT_TransUNet
 from src.dataset import SynapseDataset
 
@@ -146,9 +148,31 @@ def main(opts):
         model = PT_TransUNet()
     else:
         model = NPT_TransUNet()
+
+    LOG.info(f"Model created: {sum(p.numel() for p in model.parameters())} parameters")
     #CL visualization
     visualize(model, opts.model_name, input_data)
-    pass
+    model = model.to(opts.device)
+
+    #creiamo i dataset di training e testing
+    if opts.dataset_type == "Synapse":
+        #prendiamo le immagini di training
+        train_dataset = SynapseDataset(opts, opts.train_dir, "train", src.dataset.get_train_transform(opts))
+        train_loader = DataLoader(train_dataset, batch_size=opts.batch_size, shuffle=True)
+
+        #prendiamo le immagini di validation
+        val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
+
+    elif opts.dataset_type == "ACDC":
+        #TODO
+        print("lavori in corso")
+
+    LOG.info(f"Train batches: {len(train_loader)}, Valid batches: {len(val_loader)}")
+
+    #training
+    train_loop(model, train_loader, val_loader, opts)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
