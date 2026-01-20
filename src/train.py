@@ -10,11 +10,13 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 
 import src.dataset
 from src.transUNet import PT_TransUNet, NPT_TransUNet
 from src.dataset import SynapseDataset
+from src.utils import test_single_volume
 
 
 def get_logger():
@@ -136,10 +138,127 @@ class DiceLoss(nn.Module):
         # Media su batch e classi
         return dice_loss.mean()
 
+# LOGICA DI VALIDAZIONE (Chiamata nel Training Loop)
+def validate_model(model, valid_loader, opts):
+    """
+    Cicla su tutti i volumi del validation set e calcola la media.
+    """
+    model.eval()
+    performance_buffer = []  # Qui finiscono i risultati di tutti i pazienti
+
+    LOG.info("🧪 Validazione volumetrica avviata...")
+
+    for i_batch, sampled_batch in enumerate(valid_loader):
+        image = sampled_batch['image']  # Volume 3D [1, Z, H, W]
+        label = sampled_batch['label']
+
+        # Otteniamo le metriche (Dice, HD95) per ogni organo del paziente
+        # Ritorna: [(d1, h1), (d2, h2), ... (d8, h8)]
+        case_metrics = test_single_volume(image, label, model, classes=opts.num_classes)
+        performance_buffer.append(case_metrics)
+
+    # Trasformiamo in array: [Num_Pazienti, Num_Organi, 2] (2 = Dice e HD95)
+    performance_buffer = np.array(performance_buffer)
+
+    # Media tra tutti i pazienti per singolo organo
+    mean_per_organ = np.mean(performance_buffer, axis=0)
+
+    # Media finale tra tutti gli organi (Average Dice e Average HD95)
+    avg_dice = np.mean(mean_per_organ[:, 0])
+    avg_hd95 = np.mean(mean_per_organ[:, 1])
+
+    return avg_dice, avg_hd95
+
 def train_loop(model, train, valid, opts):
     import tensorflow as tf
     train_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/train')
     val_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/validation')
+
+    # Optimizer
+    if opts.type_tr == "sgd":
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=opts.lr,
+            momentum=opts.momentum,
+            weight_decay=opts.weight_decay,
+        )
+    #else:
+        #da valutare se testare con altri tipi di optimizer come adam
+    model.train()
+
+    # Loss function (Dice + CE secondo paper)
+    dice_loss_fn = DiceLoss(n_classes=opts.num_classes)
+
+    # Resume da checkpoint
+    start_epoch = 1
+    if opts.resume:
+        checkpoint = load_checkpoint(model, optimizer, opts, checkpoint_path=opts.checkpoint_dir)
+        if checkpoint is not None:
+            start_epoch = checkpoint['epoch'] + 1
+
+    step = 0
+
+    LOG.info(f" Training da epoca {start_epoch} a {opts.num_epochs}")
+
+    for epoch in range(start_epoch, opts.num_epochs + 1):
+        model.train()
+        epoch_losses = []
+        epoch_dice_losses = []
+        epoch_ce_losses = []
+
+        for batch_i, batch in enumerate(train, 1):
+            images = batch['image'].to(opts.device)  # [B, 1, H, W]
+            labels = batch['label'].to(opts.device)  # [B, H, W]
+
+            optimizer.zero_grad()
+
+            # Forward
+            outputs = model(images)  # [B, 9, 224, 224]
+
+            # Loss: Dice + CE (come nel paper)
+            dice_loss = dice_loss_fn(outputs, labels, softmax=True)
+            ce_loss = F.cross_entropy(outputs, labels.long())
+            loss = 0.5 * dice_loss + 0.5 * ce_loss
+
+            # Backward
+            loss.backward()
+            optimizer.step()
+
+            # Metriche
+            epoch_losses.append(loss.item())
+            epoch_dice_losses.append(dice_loss.item())
+            epoch_ce_losses.append(ce_loss.item())
+
+            # Logging
+            if batch_i % opts.log_every == 0:
+                train_loss = np.mean(epoch_losses[-opts.batch_window:])
+                train_dice_loss = np.mean(epoch_dice_losses[-opts.batch_window:])
+                train_ce_loss = np.mean(epoch_ce_losses[-opts.batch_window:])
+
+
+                msg = f'{epoch:03d}.{batch_i:03d}: '
+                msg += f'loss={train_loss:.4f} (dice={train_dice_loss:.4f}, ce={train_ce_loss:.4f}) | '
+                LOG.info(msg)
+
+                # TensorBoard
+                with train_writer.as_default():
+                    tf.summary.scalar('total_loss', train_loss, step=step)
+                    tf.summary.scalar('dice_loss', train_dice_loss, step=step)
+                    tf.summary.scalar('ce_loss', train_ce_loss, step=step)
+
+                step += 1
+
+        # --- FASE DI VALIDAZIONE (Ogni fine epoca) ---
+        # Usiamo la validazione volumetrica per monitorare i progressi "reali"
+        val_dice, val_hd95 = validate_model(model, valid, opts)
+        with val_writer.as_default():
+            tf.summary.scalar('val_dice', val_dice, step=epoch)
+            tf.summary.scalar('val_hd95', val_hd95, step=epoch)
+
+         # Checkpoint periodico
+        if epoch % opts.save_every == 0:
+            save_checkpoint(model, optimizer, epoch, loss.item(), opts)
+
 
 def main(opts):
     from visualizer import visualize
@@ -162,7 +281,7 @@ def main(opts):
 
         #prendiamo le immagini di validation
         val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)
-        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
     elif opts.dataset_type == "ACDC":
         #TODO
@@ -180,5 +299,9 @@ if __name__ == '__main__':
     opts = yaml.load(open(parser.parse_args().config), Loader=yaml.Loader)
     opts = SimpleNamespace(**opts)
     opts.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # Crea checkpoint directory
+    os.makedirs(opts.checkpoint_dir, exist_ok=True)
+
     with launch_ipdb_on_exception():
         main(opts)
