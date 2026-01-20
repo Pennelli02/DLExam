@@ -8,7 +8,8 @@ import yaml
 from rich.logging import RichHandler
 import numpy as np
 import torch
-
+from torch import nn
+import torch.nn.functional as F
 
 from src.transUNet import PT_TransUNet, NPT_TransUNet
 from src.dataset import SynapseDataset
@@ -88,6 +89,50 @@ def load_checkpoint(model, optimizer, opts, epoch=None, checkpoint_path=None):
 
     return checkpoint
 
+
+class DiceLoss(nn.Module):
+    """
+    Dice Loss multi-classe ottimizzata.
+    Basata sul paper TransUNet ma con implementazione vettorizzata.
+    """
+
+    def __init__(self, n_classes: int = 9, smooth: float = 1e-5):
+        super().__init__()
+        self.n_classes = n_classes
+        self.smooth = smooth
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor, softmax: bool = True) -> torch.Tensor:
+        """
+        Args:
+            logits: [B, C, H, W] - output del modello
+            target: [B, H, W] - ground truth (valori 0-8)
+            softmax: applica softmax ai logits
+
+        Returns:
+            loss: Dice loss mediato su tutte le classi
+        """
+        if softmax:
+            probs = F.softmax(logits, dim=1)  # [B, C, H, W]
+        else:
+            probs = logits
+
+        # One-hot encoding del target: [B, H, W] -> [B, C, H, W]
+        target_one_hot = F.one_hot(target.long(), num_classes=self.n_classes)  # [B, H, W, C]
+        target_one_hot = target_one_hot.permute(0, 3, 1, 2).float()  # [B, C, H, W]
+
+        # Flatten spaziale per ogni classe
+        probs_flat = probs.contiguous().view(probs.size(0), self.n_classes, -1)  # [B, C, H*W]
+        target_flat = target_one_hot.contiguous().view(target_one_hot.size(0), self.n_classes, -1)  # [B, C, H*W]
+
+        # Calcolo Dice per classe (vettorizzato)
+        intersection = (probs_flat * target_flat).sum(dim=2)  # [B, C]
+        union = probs_flat.sum(dim=2) + target_flat.sum(dim=2)  # [B, C]
+
+        dice_per_class = (2. * intersection + self.smooth) / (union + self.smooth)  # [B, C]
+        dice_loss = 1 - dice_per_class  # [B, C]
+
+        # Media su batch e classi
+        return dice_loss.mean()
 
 def train_loop(model, train, valid, opts):
     import tensorflow as tf

@@ -215,7 +215,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     print(f"  Validation:  {test_out_dir}")
 
 
-def calculate_metric_percase(pred, gt):
+def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
         """
         Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
         """
