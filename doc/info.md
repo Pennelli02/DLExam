@@ -200,3 +200,6 @@ L'inferenza è stata implementata seguendo un protocollo slice-by-slice coerente
 
 ### Loss
 Risulta dall'articolo che il modello nel training usa come loss una funzione combinata tra DiceLoss e CrossEntropy Loss
+
+### Training and Validation
+la validation avverrà non ad ogni iterazione di batch, ma ad ogni epoca perché essendo costosa e consiste in una valutazione delle metriche per volume diventa pesante
