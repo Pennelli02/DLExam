@@ -205,3 +205,6 @@ Risulta dall'articolo che il modello nel training usa come loss una funzione com
 La validation avverrà non ad ogni iterazione di batch, ma ad ogni 2 epoche perché essendo costosa e consiste in una valutazione delle metriche per volume diventa pesante
 Inoltre, è stato deciso di ridurre per una questione di memoria il batch a 8 immagini
 La validazione sarà sia globale (avg) e singola per ogni organo per avere una visione più dettagliata
+
+### Numero di iterazioni
+nel paper è stato fissato 14.000 iterazioni però dato che il mio computer non riesce a gestire 24 di batch ho optato per un 8 di batch e quindi i valori delle epoche cambiano e quindi per essere sicuri è stato deciso di aumentare il numero di iterazioni (52 epoche * lenght(train) circa 14k)

@@ -15,6 +15,9 @@ from torchvision.transforms import v2
 from torchvision.transforms import InterpolationMode
 from medpy import metric
 
+from src.transUNet import PT_TransUNet
+
+
 def getDataset():
     # Percorso dove salvare i file
     dataset_dir = os.path.join("src", "dataset")
@@ -269,11 +272,17 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
             z_spacing (float): spacing assiale (mm)
         """
     # Spostiamo i dati su CPU e li convertiamo in NumPy
+    # Il loader ti dà [1, 147, 512, 512] -> B, C, H, W
+    # Ma per noi C sono le fette (Z).
     # Rimuoviamo la dimensione batch: [1, Z, H, W] -> [Z, H, W]
     # Questo facilita il loop slice-by-slice
 
     image = image.squeeze(0).cpu().detach().numpy()
     label = label.squeeze(0).cpu().detach().numpy()
+
+    # Se dopo lo squeeze image è ancora 4D (raro ma possibile), forziamo:
+    if image.ndim == 4:
+        image = image[0]
 
     # Inizializziamo il volume delle predizioni
     # Stessa shape della label per facilitare il confronto voxel-wise
@@ -302,29 +311,41 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
         # Loop su ogni slice assiale
         for z in range(image.shape[0]):
             #Estrazione della singola fetta 2D
-            slice_2d = image[z]
+            slice_2d = torch.from_numpy(image[z]).float().unsqueeze(0)
 
-            #Conversione in tensore PyTorch [H, W] -> [1, 1, H, W] (Batch, Channel, Height, Width)
-            input_tensor = (
-                torch.from_numpy(slice_2d)
-                .unsqueeze(0)
-                .unsqueeze(0)
-                .float()
-                .to(device)
-            )
+            input_tensor = resize_input(slice_2d)
 
-            input_tensor = resize_input(input_tensor)
+            input_tensor = input_tensor.unsqueeze(0).to(device)
 
             outputs = net(input_tensor)
 
-            # Argmax diretto sulle logits
             out_slice = torch.argmax(outputs, dim=1).squeeze(0)
 
-            # Resize della predizione alle dimensioni originali
             out_resized = resize_output(out_slice.unsqueeze(0)).squeeze(0)
 
-            # Salviamo la slice nel volume finale
             prediction[z] = out_resized.cpu().numpy()
+
+            # #Conversione in tensore PyTorch [H, W] -> [1, 1, H, W] (Batch, Channel, Height, Width)
+            # input_tensor = (
+            #     torch.from_numpy(slice_2d)
+            #     .unsqueeze(0)
+            #     .unsqueeze(0)
+            #     .float()
+            #     .to(device)
+            # )
+            #
+            # input_tensor = resize_input(input_tensor)
+            #
+            # outputs = net(input_tensor)
+            #
+            # # Argmax diretto sulle logits
+            # out_slice = torch.argmax(outputs, dim=1).squeeze(0)
+            #
+            # # Resize della predizione alle dimensioni originali
+            # out_resized = resize_output(out_slice.unsqueeze(0)).squeeze(0)
+            #
+            # # Salviamo la slice nel volume finale
+            # prediction[z] = out_resized.cpu().numpy()
 
     metric_list = []
     # Si salta la classe 0 (background)
@@ -360,10 +381,70 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
         sitk.WriteImage(lab_itk, f"{test_save_path}/{case}_gt.nii.gz")
 
     return metric_list
-        
 
+
+def mock_test():
+     # 1. Configurazione Parametri
+     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+     num_classes = 9
+     img_size = 224
+     num_slices = 10  # Volume piccolo per il test
+
+     print(f"--- Test su Device: {device} ---")
+#
+     # 2. Creazione Modello Mock (o il tuo PT_TransUNet reale)
+     # Se vuoi testare il TUO modello reale:
+     model = PT_TransUNet(img_size=img_size).to(device)
+
+     # Per il test rapido usiamo una classe minima che simula l'errore
+#     class MockNet(torch.nn.Module):
+#         def __init__(self, n_cls):
+#             super().__init__()
+#             self.conv = torch.nn.Conv2d(3, n_cls, kernel_size=1)
+#
+#         def forward(self, x):
+#             # Simuliamo la logica incriminata del PTResnet
+#             if x.dim() == 3: x = x.unsqueeze(0)
+#             if x.shape[1] == 1:
+#                 print(f"   [Debug] Input shape prima di expand: {x.shape}")
+#                 x = x.expand(-1, 3, -1, -1)
+#                 print(f"   [Debug] Input shape dopo expand: {x.shape}")
+#             return self.conv(x)
+#
+#     model = MockNet(num_classes).to(device)
+     model.eval()
+#
+#     # 3. Creazione Dati Sintetici (Simuliamo un volume Synapse)
+#     # Shape attesa da test_single_volume: [1, Z, H, W]
+     dummy_image = torch.randn(1, num_slices, 512, 512).to(device)
+     dummy_label = torch.randint(0, num_classes, (1, num_slices, 512, 512)).to(device)
+#
+     print(f"Input Image Shape: {dummy_image.shape}")
+     print(f"Input Label Shape: {dummy_label.shape}")
+#
+#     # 4. Esecuzione Funzione
+     try:
+         metrics = test_single_volume(
+             image=dummy_image,
+             label=dummy_label,
+             net=model,
+             classes=num_classes,
+             patch_size=[img_size, img_size],
+             test_mode=False
+         )
+#
+         print("\n--- TEST COMPLETATO CON SUCCESSO ---")
+         print(f"Numero di organi valutati: {len(metrics)}")
+         print(f"Esempio Metrica Organo 1 (Dice, HD95): {metrics[0]}")
+#
+     except Exception as e:
+         print("\n--- TEST FALLITO ---")
+         print(f"Errore riscontrato: {e}")
+         import traceback
+         traceback.print_exc()
 
 
 if __name__ == "__main__":
-    preprocess_synapse()
+    mock_test()
+
 

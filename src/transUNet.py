@@ -285,9 +285,20 @@ class PTResnet(nn.Module):
         self.layer3 = backbone.layer3  #output
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+
+        # Se x è 3D [C, H, W], aggiungiamo la dimensione batch -> [1, C, H, W] per evitare problemi relativi alla validazione
+        # Qualsiasi cosa arrivi (3D o 4D), lo portiamo a [B, C, H, W]
+        if x.dim() == 3:
+            x = x.unsqueeze(0)  # [C, H, W] -> [1, C, H, W]
+        elif x.dim() == 5:
+            x = x.squeeze(0)  # [1, 1, C, H, W] -> [1, C, H, W]
+
         # Se l'input è grayscale, replica i canali perché in pre trained Resnet si aspetta tre canali e non uno
         if x.shape[1] == 1:
-            x = x.repeat(1, 3, 1, 1)
+            # .expand è meglio di .repeat: non copia i dati in memoria, crea solo viste
+            # -1 indica a PyTorch di mantenere la dimensione esistente su quell'asse
+            x = x.expand(-1, 3, -1, -1)
+
         x = self.fs(x)
         x1 = x
         x = self.maxpool(x)

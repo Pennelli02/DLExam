@@ -231,7 +231,7 @@ def train_loop(model, train, valid, opts):
 
     step = global_step
 
-    LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy}")
+    LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy} e step: {step}")
 
     for epoch in range(start_epoch, opts.n_epoch_sy + 1):
         model.train()
@@ -297,6 +297,7 @@ def train_loop(model, train, valid, opts):
 
              #  Visualizzazione Immagini su TensorBoard
             if step % 100 == 0:  # Ogni 100 iterazioni per non appesantire il disco
+                LOG.info("visualizzazione immagini su Tensorboard")
                 with train_writer.as_default():
                     idx = 0
                     # Normalizzazione immagine per display
@@ -318,7 +319,7 @@ def train_loop(model, train, valid, opts):
 
         # --- FASE DI VALIDAZIONE (Ogni fine 2 epoche) ---
         # Usiamo la validazione volumetrica per monitorare i progressi "reali"
-
+        # opts.validation_frequency
         if epoch % opts.validation_frequency == 0:
             val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
 
@@ -382,6 +383,7 @@ if __name__ == '__main__':
     opts = yaml.load(open(parser.parse_args().config), Loader=yaml.Loader)
     opts = SimpleNamespace(**opts)
     opts.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(opts.device)
 
     # Crea checkpoint directory
     os.makedirs(opts.checkpoint_dir, exist_ok=True)
