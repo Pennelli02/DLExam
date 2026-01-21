@@ -207,8 +207,10 @@ def train_loop(model, train, valid, opts):
     #else:
         #da valutare se testare con altri tipi di optimizer come adam
 
-    # 2. Definizione Scheduler Poly LR (Basato su iterazioni totali)
-    max_iterations = opts.n_epoch_sy
+    # Definizione Scheduler Poly LR (Basato su iterazioni totali)
+
+    max_iterations = len(train) * opts.n_epoch_sy # Numero totale di batch in tutto il training
+
     poly_lr_lambda = lambda step: (1.0 - step / max_iterations) ** 0.9
     scheduler = LambdaLR(optimizer, lr_lambda=poly_lr_lambda)
 
