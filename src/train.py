@@ -141,38 +141,68 @@ class DiceLoss(nn.Module):
 # LOGICA DI VALIDAZIONE (Chiamata nel Training Loop)
 def validate_model(model, valid_loader, opts):
     """
-    Cicla su tutti i volumi del validation set e calcola la media.
+    Validazione volumetrica con metriche dettagliate per-organo
     """
     model.eval()
-    performance_buffer = []  # Qui finiscono i risultati di tutti i pazienti
+    performance_buffer = []
 
-    LOG.info("🧪 Validazione volumetrica avviata...")
+    # Nomi degli organi secondo il paper TransUNet
+    organ_names = [
+        "Aorta", "Gallbladder", "Left Kidney", "Right Kidney",
+        "Liver", "Pancreas", "Spleen", "Stomach"
+    ]
 
-    for i_batch, sampled_batch in enumerate(valid_loader):
-        image = sampled_batch['image']  # Volume 3D [1, Z, H, W]
-        label = sampled_batch['label']
+    LOG.info(" Validazione volumetrica avviata...")
 
-        # Otteniamo le metriche (Dice, HD95) per ogni organo del paziente
-        # Ritorna: [(d1, h1), (d2, h2), ... (d8, h8)]
-        case_metrics = test_single_volume(image, label, model, classes=opts.num_classes)
-        performance_buffer.append(case_metrics)
+    with torch.no_grad():  # per risparmiare memoria
+        for i_batch, sampled_batch in enumerate(valid_loader):
+            image = sampled_batch['image']
+            label = sampled_batch['label']
+            case_name = sampled_batch['case_name'][0]
 
-    # Trasformiamo in array: [Num_Pazienti, Num_Organi, 2] (2 = Dice e HD95)
+            case_metrics = test_single_volume(
+                image, label, model,
+                classes=opts.n_classes
+            )
+            performance_buffer.append(case_metrics)
+
+            LOG.info(f" {case_name} processato")
+
+    # [Num_Pazienti, Num_Organi, 2]
     performance_buffer = np.array(performance_buffer)
 
-    # Media tra tutti i pazienti per singolo organo
+    # Media per organo
     mean_per_organ = np.mean(performance_buffer, axis=0)
 
-    # Media finale tra tutti gli organi (Average Dice e Average HD95)
+    # Statistiche globali
     avg_dice = np.mean(mean_per_organ[:, 0])
     avg_hd95 = np.mean(mean_per_organ[:, 1])
 
-    return avg_dice, avg_hd95
+    # Log dettagliato per-organo
+    LOG.info("\n" + "=" * 60)
+    LOG.info(" RISULTATI VALIDAZIONE")
+    LOG.info("=" * 60)
+
+    for i, organ in enumerate(organ_names):
+        dice = mean_per_organ[i, 0]
+        hd95 = mean_per_organ[i, 1]
+        LOG.info(f"{organ:15s} -> Dice: {dice:.4f} | HD95: {hd95:.2f} mm")
+
+    LOG.info(f"{'MEDIA TOTALE':15s} -> Dice: {avg_dice:.4f} | HD95: {avg_hd95:.2f} mm")
+
+    return avg_dice, avg_hd95, mean_per_organ
+
 
 def train_loop(model, train, valid, opts):
     import tensorflow as tf
     train_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/train')
     val_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/validation')
+
+    # Nomi organi per TensorBoard
+    organ_names = [
+        "Aorta", "Gallbladder", "Left_Kidney", "Right_Kidney",
+        "Liver", "Pancreas", "Spleen", "Stomach"
+    ]
 
     # Optimizer
     if opts.type_tr == "sgd":
@@ -187,7 +217,7 @@ def train_loop(model, train, valid, opts):
     model.train()
 
     # Loss function (Dice + CE secondo paper)
-    dice_loss_fn = DiceLoss(n_classes=opts.num_classes)
+    dice_loss_fn = DiceLoss(n_classes=opts.n_classes)
 
     # Resume da checkpoint
     start_epoch = 1
@@ -198,9 +228,9 @@ def train_loop(model, train, valid, opts):
 
     step = 0
 
-    LOG.info(f" Training da epoca {start_epoch} a {opts.num_epochs}")
+    LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy}")
 
-    for epoch in range(start_epoch, opts.num_epochs + 1):
+    for epoch in range(start_epoch, opts.n_epoch_sy + 1):
         model.train()
         epoch_losses = []
         epoch_dice_losses = []
@@ -248,12 +278,23 @@ def train_loop(model, train, valid, opts):
 
                 step += 1
 
-        # --- FASE DI VALIDAZIONE (Ogni fine epoca) ---
+        # --- FASE DI VALIDAZIONE (Ogni fine 2 epoche) ---
         # Usiamo la validazione volumetrica per monitorare i progressi "reali"
-        val_dice, val_hd95 = validate_model(model, valid, opts)
-        with val_writer.as_default():
-            tf.summary.scalar('val_dice', val_dice, step=epoch)
-            tf.summary.scalar('val_hd95', val_hd95, step=epoch)
+
+            if epoch % opts.validation_frequency == 0:
+                val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
+
+                with val_writer.as_default():
+                    # Metriche globali
+                    tf.summary.scalar('val_dice_avg', val_dice, step=epoch)
+                    tf.summary.scalar('val_hd95_avg', val_hd95, step=epoch)
+
+                    # Metriche per-organo
+                    for i, organ_name in enumerate(organ_names):
+                        tf.summary.scalar(f'val_dice/{organ_name}',
+                                              per_organ_metrics[i, 0], step=epoch)
+                        tf.summary.scalar(f'val_hd95/{organ_name}',
+                                              per_organ_metrics[i, 1], step=epoch)
 
          # Checkpoint periodico
         if epoch % opts.save_every == 0:
@@ -262,7 +303,7 @@ def train_loop(model, train, valid, opts):
 
 def main(opts):
     from visualizer import visualize
-    input_data = torch.randn(opts.batch_size, 1, opts.image_size, opts.image_size)
+    input_data = torch.randn(opts.batch, 1, opts.image_size, opts.image_size)
     if opts.pre_trained:
         model = PT_TransUNet()
     else:
@@ -277,7 +318,8 @@ def main(opts):
     if opts.dataset_type == "Synapse":
         #prendiamo le immagini di training
         train_dataset = SynapseDataset(opts, opts.train_dir, "train", src.dataset.get_train_transform(opts))
-        train_loader = DataLoader(train_dataset, batch_size=opts.batch_size, shuffle=True)
+        print(train_dataset.__len__())
+        train_loader = DataLoader(train_dataset, batch_size=opts.batch, shuffle=True)
 
         #prendiamo le immagini di validation
         val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)

@@ -202,4 +202,6 @@ L'inferenza è stata implementata seguendo un protocollo slice-by-slice coerente
 Risulta dall'articolo che il modello nel training usa come loss una funzione combinata tra DiceLoss e CrossEntropy Loss
 
 ### Training and Validation
-la validation avverrà non ad ogni iterazione di batch, ma ad ogni epoca perché essendo costosa e consiste in una valutazione delle metriche per volume diventa pesante
+La validation avverrà non ad ogni iterazione di batch, ma ad ogni 2 epoche perché essendo costosa e consiste in una valutazione delle metriche per volume diventa pesante
+Inoltre, è stato deciso di ridurre per una questione di memoria il batch a 8 immagini
+La validazione sarà sia globale (avg) e singola per ogni organo per avere una visione più dettagliata
