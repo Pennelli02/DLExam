@@ -23,7 +23,7 @@ train_dir: "dataset/project_transunet/train_npz"
 validation_dir: "dataset/project_transunet/validation_vol_h5"
 
 log_every: 25
-batch_window: 10
+batch_window: 50
 save_every: 6 # così otteniamo 8 checkpoint
 checkpoint_dir: 'transunet_ckp'
 validation_frequency: 2 # valida ogni 2 epoche invece di ogni epoca
