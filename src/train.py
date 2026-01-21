@@ -222,7 +222,7 @@ def train_loop(model, train, valid, opts):
     # Resume da checkpoint
     start_epoch = 1
     if opts.resume:
-        checkpoint = load_checkpoint(model, optimizer, opts, checkpoint_path=opts.checkpoint_dir)
+        checkpoint = load_checkpoint(model, optimizer, opts)
         if checkpoint is not None:
             start_epoch = checkpoint['epoch'] + 1
 
@@ -239,6 +239,16 @@ def train_loop(model, train, valid, opts):
         for batch_i, batch in enumerate(train, 1):
             images = batch['image'].to(opts.device)  # [B, 1, H, W]
             labels = batch['label'].to(opts.device)  # [B, H, W]
+
+            #DEBUG: : Stampa statistiche label
+            unique_labels = torch.unique(labels)
+            if unique_labels.max() >= opts.n_classes:
+                LOG.error(f" ERRORE: Label fuori range rilevate!")
+                LOG.error(f"   Valori trovati: {unique_labels.cpu().numpy()}")
+                LOG.error(f"   Min: {unique_labels.min()}, Max: {unique_labels.max()}")
+                LOG.error(f"   Num classes atteso: {opts.n_classes}")
+                LOG.error(f"   Case: {batch['case_name']}")
+                raise ValueError("Label fuori range nel dataset!")
 
             optimizer.zero_grad()
 
@@ -281,20 +291,23 @@ def train_loop(model, train, valid, opts):
         # --- FASE DI VALIDAZIONE (Ogni fine 2 epoche) ---
         # Usiamo la validazione volumetrica per monitorare i progressi "reali"
 
-            if epoch % opts.validation_frequency == 0:
-                val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
+        if epoch % opts.validation_frequency == 0:
+            val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
 
-                with val_writer.as_default():
-                    # Metriche globali
-                    tf.summary.scalar('val_dice_avg', val_dice, step=epoch)
-                    tf.summary.scalar('val_hd95_avg', val_hd95, step=epoch)
+            with val_writer.as_default():
+                 # Metriche globali
+                 tf.summary.scalar('val_dice_avg', val_dice, step=epoch)
+                 tf.summary.scalar('val_hd95_avg', val_hd95, step=epoch)
 
-                    # Metriche per-organo
-                    for i, organ_name in enumerate(organ_names):
-                        tf.summary.scalar(f'val_dice/{organ_name}',
+                 # Metriche per-organo
+                 for i, organ_name in enumerate(organ_names):
+                    tf.summary.scalar(f'val_dice/{organ_name}',
                                               per_organ_metrics[i, 0], step=epoch)
-                        tf.summary.scalar(f'val_hd95/{organ_name}',
+                    tf.summary.scalar(f'val_hd95/{organ_name}',
                                               per_organ_metrics[i, 1], step=epoch)
+
+            # PULIZIA MEMORIA GPU: Fondamentale dopo la validazione volumetrica
+            torch.cuda.empty_cache()
 
          # Checkpoint periodico
         if epoch % opts.save_every == 0:

@@ -175,6 +175,16 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         image = np.clip(image, -125, 275)
         image = (image + 125) / 400.0  # Normalizza a [0, 1]
 
+        # Classi > 8 vengono considerate background
+        label = np.where(label > 8, 0, label)
+        label = label.astype(np.uint8)
+
+        # Verifica che la rimappatura abbia funzionato
+        unique_labels = np.unique(label)
+        if unique_labels.max() > 8:
+            print(f"\n  ERROR {case_name}: still has labels > 8: {unique_labels}")
+            continue
+
         # Determina train o validation
         is_train = case_name in train_cases
 
