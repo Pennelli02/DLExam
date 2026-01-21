@@ -63,8 +63,9 @@ def load_checkpoint(model, optimizer, opts, epoch=None, checkpoint_path=None):
             LOG.warning(" Nessun checkpoint trovato. Il training partirà da zero.")
             return None
 
-        # Prende l'ultimo basandosi sul nome del file (e_00001.chp, e_00002.chp...)
-        fname = max(chk_files, key=os.path.getctime)  # Il più recente per data di creazione
+        # ORDINE ALFABETICO: e_00050.chp verrà sempre dopo e_00001.chp
+        chk_files.sort()
+        fname = chk_files[-1]  # Prende l'ultimo in ordine alfabetico
 
     # CARICAMENTO EFFETTIVO
     LOG.info(f"Caricamento checkpoint: {fname}")
@@ -244,10 +245,10 @@ def train_loop(model, train, valid, opts):
             unique_labels = torch.unique(labels)
             if unique_labels.max() >= opts.n_classes:
                 LOG.error(f" ERRORE: Label fuori range rilevate!")
-                LOG.error(f"   Valori trovati: {unique_labels.cpu().numpy()}")
-                LOG.error(f"   Min: {unique_labels.min()}, Max: {unique_labels.max()}")
-                LOG.error(f"   Num classes atteso: {opts.n_classes}")
-                LOG.error(f"   Case: {batch['case_name']}")
+                LOG.error(f"  Valori trovati: {unique_labels.cpu().numpy()}")
+                LOG.error(f"  Min: {unique_labels.min()}, Max: {unique_labels.max()}")
+                LOG.error(f"  Num classes atteso: {opts.n_classes}")
+                LOG.error(f"  Case: {batch['case_name']}")
                 raise ValueError("Label fuori range nel dataset!")
 
             optimizer.zero_grad()
