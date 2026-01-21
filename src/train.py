@@ -11,6 +11,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 
 import src.dataset
@@ -30,67 +31,57 @@ def get_logger():
 
 LOG = get_logger()
 
-def save_checkpoint(model, optimizer, epoch, loss, opts):
-    fname = os.path.join(opts.checkpoint_dir,f'e_{epoch:05d}.chp')
-    info = dict(model_state_dict=model.state_dict(),
-                optimizer_state_dict=optimizer.state_dict(),
-                epoch=epoch, loss=loss)
+def save_checkpoint(model, optimizer, scheduler, epoch, loss, global_step ,opts):
+    fname = os.path.join(opts.checkpoint_dir, f'e_{epoch:05d}.chp')
+    info = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(), # Salviamo lo stato dello scheduler
+        'epoch': epoch,
+        'loss': loss,
+        'global_step': global_step
+    }
     torch.save(info, fname)
     LOG.info(f'Saved checkpoint {fname}')
 
 
-def load_checkpoint(model, optimizer, opts, epoch=None, checkpoint_path=None):
-    """
-    Carica automaticamente l'ultimo checkpoint o uno specifico.
-
-    Args:
-        model: Il modello già istanziato.
-        optimizer: L'optimizer già istanziato sui parametri del modello.
-        opts: Namespace con opts.checkpoint_dir e opts.device.
-        epoch: (Opzionale) Epoca specifica da caricare.
-        checkpoint_path: (Opzionale) Path diretto al file .chp.
-    """
-
-    # LOGICA DI RICERCA AUTOMATICA DEL FILE
+def load_checkpoint(model, optimizer, scheduler, opts, epoch=None, checkpoint_path=None):
     if checkpoint_path is not None:
         fname = checkpoint_path
     elif epoch is not None:
         fname = os.path.join(opts.checkpoint_dir, f'e_{epoch:05d}.chp')
     else:
-        # Cerca tutti i file .chp nella cartella
         chk_files = glob.glob(os.path.join(opts.checkpoint_dir, "*.chp"))
         if not chk_files:
-            LOG.warning(" Nessun checkpoint trovato. Il training partirà da zero.")
+            LOG.warning(" Nessun checkpoint trovato.")
             return None
-
-        # ORDINE ALFABETICO: e_00050.chp verrà sempre dopo e_00001.chp
         chk_files.sort()
-        fname = chk_files[-1]  # Prende l'ultimo in ordine alfabetico
+        fname = chk_files[-1]
 
-    # CARICAMENTO EFFETTIVO
-    LOG.info(f"Caricamento checkpoint: {fname}")
+    LOG.info(f" Caricamento checkpoint: {fname}")
 
-    # Carichiamo sempre su CPU inizialmente per evitare errori di memoria GPU
     checkpoint = torch.load(fname, map_location='cpu')
 
-    # Ripristiniamo i pesi del modello
     model.load_state_dict(checkpoint['model_state_dict'])
 
-    # Ripristiniamo lo stato dell'optimizer (es. momentum, medie Adam)
     if optimizer is not None and 'optimizer_state_dict' in checkpoint:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        # SPOSTAMENTO STATO OPTIMIZER SU GPU
+        # Sposta stato optimizer su GPU
         for state in optimizer.state.values():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(opts.device)
 
-    # SPOSTAMENTO MODELLO SUL DEVICE
+    if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        # Lo scheduler NON ha bisogno di essere spostato su GPU
+
     model.to(opts.device)
 
     loaded_epoch = checkpoint['epoch']
-    LOG.info(f" Checkpoint caricato correttamente! (Epoca: {loaded_epoch})")
+    loaded_step = checkpoint.get('global_step', 0)
+    LOG.info(f" Checkpoint caricato! (Epoca: {loaded_epoch})")
 
     return checkpoint
 
@@ -215,6 +206,12 @@ def train_loop(model, train, valid, opts):
         )
     #else:
         #da valutare se testare con altri tipi di optimizer come adam
+
+    # 2. Definizione Scheduler Poly LR (Basato su iterazioni totali)
+    max_iterations = opts.n_epoch_sy
+    poly_lr_lambda = lambda step: (1.0 - step / max_iterations) ** 0.9
+    scheduler = LambdaLR(optimizer, lr_lambda=poly_lr_lambda)
+
     model.train()
 
     # Loss function (Dice + CE secondo paper)
@@ -222,12 +219,15 @@ def train_loop(model, train, valid, opts):
 
     # Resume da checkpoint
     start_epoch = 1
+    global_step = 0
+
     if opts.resume:
-        checkpoint = load_checkpoint(model, optimizer, opts)
+        checkpoint = load_checkpoint(model, optimizer, scheduler,opts)
         if checkpoint is not None:
+            global_step = checkpoint.get('global_step', 0)
             start_epoch = checkpoint['epoch'] + 1
 
-    step = 0
+    step = global_step
 
     LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy}")
 
@@ -265,6 +265,8 @@ def train_loop(model, train, valid, opts):
             loss.backward()
             optimizer.step()
 
+            scheduler.step()
+
             # Metriche
             epoch_losses.append(loss.item())
             epoch_dice_losses.append(dice_loss.item())
@@ -291,7 +293,26 @@ def train_loop(model, train, valid, opts):
                     tf.summary.scalar('dice_loss', train_dice_loss, step=step)
                     tf.summary.scalar('ce_loss', train_ce_loss, step=step)
 
-                step += 1
+             #  Visualizzazione Immagini su TensorBoard
+            if step % 100 == 0:  # Ogni 100 iterazioni per non appesantire il disco
+                with train_writer.as_default():
+                    idx = 0
+                    # Normalizzazione immagine per display
+                    img_vis = (images[idx] - images[idx].min()) / (images[idx].max() - images[idx].min() + 1e-8)
+                    tf.summary.image('train/Image', img_vis.cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
+                                             step=step)
+
+                    # Predizione (argmax delle classi)
+                    pred = torch.argmax(torch.softmax(outputs[idx], dim=0), dim=0).unsqueeze(0).float()
+                    tf.summary.image('train/Prediction',
+                                             (pred * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
+                                             step=step)
+
+                    # Ground Truth
+                    gt = labels[idx].unsqueeze(0).float()
+                    tf.summary.image('train/GroundTruth',
+                                             (gt * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...], step=step)
+            step += 1
 
         # --- FASE DI VALIDAZIONE (Ogni fine 2 epoche) ---
         # Usiamo la validazione volumetrica per monitorare i progressi "reali"
@@ -316,7 +337,7 @@ def train_loop(model, train, valid, opts):
 
          # Checkpoint periodico
         if epoch % opts.save_every == 0:
-            save_checkpoint(model, optimizer, epoch, loss.item(), opts)
+            save_checkpoint(model, optimizer, scheduler, epoch, step, loss.item(), opts)
 
 
 def main(opts):
