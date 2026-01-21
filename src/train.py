@@ -276,9 +276,13 @@ def train_loop(model, train, valid, opts):
                 train_dice_loss = np.mean(epoch_dice_losses[-opts.batch_window:])
                 train_ce_loss = np.mean(epoch_ce_losses[-opts.batch_window:])
 
+                # Calcola lo score per il log (1 - loss)
+                current_dice_score = 1 - train_dice_loss
 
                 msg = f'{epoch:03d}.{batch_i:03d}: '
-                msg += f'loss={train_loss:.4f} (dice={train_dice_loss:.4f}, ce={train_ce_loss:.4f}) | '
+                msg += f'TotalLoss={train_loss:.4f} | '
+                msg += f'DiceScore={current_dice_score:.4f} | '
+                msg += f'CE={train_ce_loss:.4f}'
                 LOG.info(msg)
 
                 # TensorBoard
