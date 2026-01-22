@@ -447,7 +447,41 @@ def mock_test():
          traceback.print_exc()
 
 
+import h5py
+import numpy as np
+
+
+def inspect_h5_file(filepath):
+    print("=" * 50)
+    print(f"ISPEZIONE FILE: {filepath}")
+    print("=" * 50)
+
+    try:
+        with h5py.File(filepath, 'r') as f:
+            #  Vediamo quali dataset ci sono (dovrebbero essere 'image' e 'label')
+            keys = list(f.keys())
+            print(f"Chiavi trovate: {keys}\n")
+
+            for key in keys:
+                data = f[key]
+                print(f"--- DATASET: {key} ---")
+                print(f"  Shape: {data.shape}  (Z, H, W)")
+                print(f"  Dtype: {data.dtype}")
+
+                # Calcoliamo alcune statistiche veloci
+                # Carichiamo i dati in memoria per le statistiche
+                arr = data[:]
+                print(f"  Valore Min: {np.min(arr):.4f}")
+                print(f"  Valore Max: {np.max(arr):.4f}")
+                print(f"  Valori unici: {np.unique(arr) if key == 'label' else 'N/A'}")
+                print("-" * 30)
+
+    except Exception as e:
+        print(f"Errore durante l'apertura del file: {e}")
+
+
+
 if __name__ == "__main__":
-    mock_test()
+    inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
 
 
