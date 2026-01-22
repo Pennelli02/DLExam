@@ -365,7 +365,7 @@ def main(opts):
 
         #prendiamo le immagini di validation
         val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)
-        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=opts.num_workers, pin_memory=True)
 
     elif opts.dataset_type == "ACDC":
         #TODO
