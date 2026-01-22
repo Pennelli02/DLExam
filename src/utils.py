@@ -325,6 +325,9 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
 
             prediction[z] = out_resized.cpu().numpy()
 
+            # libera memoria GPU
+            del input_tensor, outputs, out_slice, out_resized
+
             # #Conversione in tensore PyTorch [H, W] -> [1, 1, H, W] (Batch, Channel, Height, Width)
             # input_tensor = (
             #     torch.from_numpy(slice_2d)

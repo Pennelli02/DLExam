@@ -340,7 +340,7 @@ def train_loop(model, train, valid, opts):
 
          # Checkpoint periodico
         if epoch % opts.save_every == 0:
-            save_checkpoint(model, optimizer, scheduler, epoch, step, loss.item(), opts)
+            save_checkpoint(model, optimizer, scheduler, epoch, loss.item(), step, opts)
 
 
 def main(opts):
@@ -361,7 +361,7 @@ def main(opts):
         #prendiamo le immagini di training
         train_dataset = SynapseDataset(opts, opts.train_dir, "train", src.dataset.get_train_transform(opts))
         print(train_dataset.__len__())
-        train_loader = DataLoader(train_dataset, batch_size=opts.batch, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=opts.batch, shuffle=True, num_workers=opts.num_workers, pin_memory=True)
 
         #prendiamo le immagini di validation
         val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)
