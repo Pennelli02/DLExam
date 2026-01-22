@@ -5,7 +5,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 # Importa i tipi speciali di tensori: Image, Mask, BoundingBox, etc.
 # Servono per dire a v2 come trattare ogni tipo di dato
