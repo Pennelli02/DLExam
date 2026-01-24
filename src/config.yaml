@@ -26,8 +26,9 @@ validation_dir: "dataset/project_transunet/validation_vol_h5"
 log_every: 25
 batch_window: 50
 save_every: 6 # così otteniamo 8 checkpoint
-checkpoint_dir: 'transunet_ckp'
+checkpoint_dir: 'transunet_ckp_v2'
 validation_frequency: 4 # valida ogni 4 epoche invece di ogni epoca
 
-resume: True # impostato così indico di prendere l'ultimo checkpoint
+save_dir: 'val_images'
+resume: False # impostato così indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]

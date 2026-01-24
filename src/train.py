@@ -154,7 +154,7 @@ def validate_model(model, valid_loader, opts):
 
             case_metrics = test_single_volume(
                 image, label, model,
-                classes=opts.n_classes
+                classes=opts.n_classes, test_mode=True, test_save_path=opts.save_dir
             )
             performance_buffer.append(case_metrics)
 

@@ -110,8 +110,11 @@ def setup_synapse_dataset():
         print("\n Setup incomplete - check directory structure")
         return False
 
+
 def preprocess_synapse(random_seed=None, train_ratio=0.6):
-    # Percorsi corretti dopo estrazione
+    """
+    Preprocessing del dataset Synapse con MAPPING CORRETTO delle classi
+    """
     raw_data_dir = os.path.join("dataset", "RawData", "RawData", "Training", "img")
     label_data_dir = os.path.join("dataset", "RawData", "RawData", "Training", "label")
     output_dir = os.path.join("dataset", "project_transunet")
@@ -126,80 +129,103 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     image_list = sorted(glob.glob(os.path.join(raw_data_dir, "*.nii.gz")))
 
     if len(image_list) == 0:
-        print(f" No files found in {raw_data_dir}")
-        print("Did you extract RawData.zip?")
+        print(f"❌ No files found in {raw_data_dir}")
         return
 
-    print(f" Found {len(image_list)} volumes")
+    print(f"✓ Found {len(image_list)} volumes")
+
+    # ========== MAPPING CORRETTO ==========
+    # Synapse original → TransUNet standard
+    LABEL_MAPPING = {
+        0: 0,  # Background
+        1: 7,  # Spleen
+        2: 4,  # Right Kidney
+        3: 3,  # Left Kidney
+        4: 2,  # Gallbladder
+        6: 5,  # Liver ← CHIAVE!
+        7: 8,  # Stomach
+        8: 1,  # Aorta
+        11: 6,  # Pancreas
+    }
 
     if random_seed is None:
-        # Split secondo TransUNet paper (18 training / 12 validation)
-        # Questi sono gli ID esatti usati nel paper
+        # Split ufficiale del paper
         train_ids = [5, 6, 7, 9, 10, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 37, 39, 40]
         train_cases = [f"img{i:04d}" for i in train_ids]
-
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
         test_cases = [c for c in all_cases if c not in train_cases]
 
+        print(f"\n{'=' * 70}")
+        print(f"OFFICIAL PAPER SPLIT")
+        print(f"{'=' * 70}")
         print(f"Training: {len(train_cases)} cases")
-        print(f"Validation: {len(test_cases)} cases\n")
-    elif random_seed is not None:
+        print(f"Validation: {len(test_cases)} cases")
+        print(f"{'=' * 70}\n")
+    else:
         random.seed(random_seed)
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
-        # Shuffle e split
         random.shuffle(all_cases)
         n_train = int(len(all_cases) * train_ratio)
-
         train_cases = all_cases[:n_train]
         test_cases = all_cases[n_train:]
-
-        print(f"Training: {len(train_cases)} cases - {sorted(train_cases)}")
-        print(f"Testing: {len(test_cases)} cases - {sorted(test_cases)}\n")
 
     train_slice_count = 0
     val_volume_count = 0
 
     for img_path in tqdm(image_list, desc="Processing volumes"):
         case_name = os.path.basename(img_path).replace(".nii.gz", "")
-
-        # Costruisci il path della label
         case_num = case_name.replace("img", "")
         label_path = os.path.join(label_data_dir, f"label{case_num}.nii.gz")
 
         if not os.path.exists(label_path):
-            print(f"\n  Warning: Label not found for {case_name}")
+            print(f"\n⚠️  Warning: Label not found for {case_name}")
             continue
 
-        # Carica i volumi
+        # Carica volumi
         image = nib.load(img_path).get_fdata()
-        label = nib.load(label_path).get_fdata()
+        label_raw = nib.load(label_path).get_fdata()
 
-        # Preprocessing (TransUNet paper)
+        # ========== PREPROCESSING IMMAGINE ==========
         image = np.clip(image, -125, 275)
-        image = (image + 125) / 400.0  # Normalizza a [0, 1]
+        image = (image + 125) / 400.0  # Normalizza [0, 1]
 
-        # Classi > 8 vengono considerate background
-        label = np.where(label > 8, 0, label)
-        label = label.astype(np.uint8)
+        # ========== RIMAPPATURA LABEL (CRITICO!) ==========
+        label = np.zeros_like(label_raw, dtype=np.uint8)
 
-        # Verifica che la rimappatura abbia funzionato
+        print(f"\n[{case_name}] Original label values: {np.unique(label_raw)}")
+
+        for original_class, target_class in LABEL_MAPPING.items():
+            mask = (label_raw == original_class)
+            label[mask] = target_class
+
+        print(f"[{case_name}] Remapped label values: {np.unique(label)}")
+
+        # Verifica mapping
         unique_labels = np.unique(label)
         if unique_labels.max() > 8:
-            print(f"\n  ERROR {case_name}: still has labels > 8: {unique_labels}")
+            print(f"❌ ERROR {case_name}: Labels still > 8: {unique_labels}")
             continue
+
+        # Verifica che Liver (5) sia presente (dovrebbe esserci nella maggior parte dei casi)
+        if 5 not in unique_labels:
+            print(f"⚠️  WARNING {case_name}: Liver (class 5) not found after remapping!")
+
+        # Count voxels per class
+        for cls in range(9):
+            count = (label == cls).sum()
+            if count > 0 and cls > 0:  # Skip background
+                organ_names = ["", "Aorta", "Gallbladder", "L.Kidney",
+                               "R.Kidney", "Liver", "Pancreas", "Spleen", "Stomach"]
+                print(f"  Class {cls} ({organ_names[cls]}): {count:,} voxels")
 
         # Determina train o validation
         is_train = case_name in train_cases
 
         if is_train:
-            # Salva slice 2D per training
+            # Salva slice 2D
             for slice_idx in range(image.shape[2]):
                 img_slice = image[:, :, slice_idx]
                 lab_slice = label[:, :, slice_idx]
-
-                #  salta slice completamente vuote
-                # if np.sum(lab_slice) == 0:
-                #     continue
 
                 slice_name = f"{case_name}_slice{slice_idx:03d}.npz"
                 np.savez(
@@ -209,8 +235,8 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
                 )
                 train_slice_count += 1
         else:
-            # Salva volume 3D per test
-            image_vol = image.transpose(2, 0, 1)  # [Z, H, W]
+            # Salva volume 3D
+            image_vol = image.transpose(2, 0, 1)
             label_vol = label.transpose(2, 0, 1)
 
             vol_name = f"{case_name}.npy.h5"
@@ -220,12 +246,15 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
 
             val_volume_count += 1
 
-    print(f"PREPROCESSING COMPLETE!\n")
+    print(f"\n{'=' * 70}")
+    print(f"PREPROCESSING COMPLETE!")
+    print(f"{'=' * 70}")
     print(f"Training slices: {train_slice_count}")
-    print(f" Validation  volumes: {val_volume_count}")
+    print(f"Validation volumes: {val_volume_count}")
     print(f"\nOutput:")
     print(f"  Train: {train_out_dir}")
-    print(f"  Validation:  {test_out_dir}")
+    print(f"  Validation: {test_out_dir}")
+    print(f"{'=' * 70}\n")
 
 
 def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
@@ -365,6 +394,13 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
         # Crea directory se non esiste
         os.makedirs(test_save_path, exist_ok=True)
 
+        # ======== VERIFICA VALORI PRIMA DI SALVARE ========
+        print(f"\n[DEBUG {case}] Verifica valori pre-salvataggio:")
+        print(f"  Prediction shape: {prediction.shape}")
+        print(f"  Prediction dtype: {prediction.dtype}")
+        print(f"  Prediction unique values: {np.unique(prediction)}")
+        print(f"  Prediction min/max: {prediction.min():.2f} / {prediction.max():.2f}")
+
         img_itk = sitk.GetImageFromArray(image.astype(np.float32))
         prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
         lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
@@ -472,9 +508,59 @@ def inspect_h5_file(filepath):
         print(f"Errore durante l'apertura del file: {e}")
 
 
+def inspect_label_distribution(h5_file_path):
+    """Verifica quali classi sono presenti in un file di validation"""
+    import h5py
+
+    with h5py.File(h5_file_path, 'r') as f:
+        label = f['label'][:]
+
+    unique, counts = np.unique(label, return_counts=True)
+
+    organ_names = {
+        0: "Background",
+        1: "Aorta",
+        2: "Gallbladder",
+        3: "Left Kidney",
+        4: "Right Kidney",
+        5: "Liver",
+        6: "Pancreas",
+        7: "Spleen",
+        8: "Stomach"
+    }
+
+    print(f"\n{'=' * 70}")
+    print(f"FILE: {h5_file_path}")
+    print(f"{'=' * 70}")
+    print(f"{'Class':<5} | {'Organ':<15} | {'Voxels':<12} | {'Percentage':<10}")
+    print("-" * 70)
+
+    total_voxels = label.size
+    for cls, count in zip(unique, counts):
+        organ = organ_names.get(int(cls), "UNKNOWN")
+        percentage = (count / total_voxels) * 100
+        print(f"{int(cls):<5} | {organ:<15} | {count:<12,} | {percentage:>6.2f}%")
+
+    print("=" * 70 + "\n")
+
+    return unique
+
+
+
 
 if __name__ == "__main__":
     inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
     mock_test()
+    # Test su tutti i file validation
+    validation_dir = "dataset/project_transunet/validation_vol_h5"
+    for h5_file in sorted(Path(validation_dir).glob("*.h5")):
+        classes_present = inspect_label_distribution(str(h5_file))
 
+        # VERIFICA: Liver (classe 5) dovrebbe essere presente in TUTTI i file
+        if 5 not in classes_present:
+            print(f"⚠️  WARNING: Liver (class 5) NOT FOUND in {h5_file.name}!")
+
+        # VERIFICA: Right Kidney (classe 4) dovrebbe essere presente
+        if 4 not in classes_present:
+            print(f"⚠️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
 
