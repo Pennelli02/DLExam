@@ -277,7 +277,7 @@ class Encoder(nn.Module):
 class PTResnet(nn.Module):
     def __init__(self):
         super().__init__()
-        backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)  #1/2
         self.maxpool = backbone.maxpool
         self.layer1 = backbone.layer1  #1/4

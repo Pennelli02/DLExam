@@ -293,7 +293,7 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
 
     resize_input = v2.Resize(
         size=patch_size,
-        interpolation=InterpolationMode.BILINEAR,
+        interpolation=InterpolationMode.BICUBIC,
         antialias=True
     )
 
@@ -310,45 +310,41 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
     with torch.inference_mode():
         # Loop su ogni slice assiale
         for z in range(image.shape[0]):
-            #Estrazione della singola fetta 2D
-            slice_2d = torch.from_numpy(image[z]).float().unsqueeze(0)
+            # Estrazione della singola fetta 2D
+            slice_2d = image[z, :, :]
+            x, y = slice_2d.shape[0], slice_2d.shape[1]
 
-            input_tensor = resize_input(slice_2d)
+            # Conversione in tensore PyTorch [H, W] -> [1, H, W]
+            slice_tensor = torch.from_numpy(slice_2d).float().unsqueeze(0)
 
-            input_tensor = input_tensor.unsqueeze(0).to(device)
+            # Resize dell'input SOLO se necessario
+            if x != patch_size[0] or y != patch_size[1]:
+                slice_resized = resize_input(slice_tensor)
+            else:
+                slice_resized = slice_tensor
 
+            # Aggiungi dimensione batch: [1, H, W] -> [1, 1, H, W]
+            input_tensor = slice_resized.unsqueeze(0).to(device)
+
+            # Inferenza
             outputs = net(input_tensor)
 
-            out_slice = torch.argmax(outputs, dim=1).squeeze(0)
+            # Softmax + Argmax (come nel paper originale)
+            out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
 
-            out_resized = resize_output(out_slice.unsqueeze(0)).squeeze(0)
+            # Resize della predizione alle dimensioni originali SOLO se necessario
+            if x != patch_size[0] or y != patch_size[1]:
+                out_resized = resize_output(out.unsqueeze(0)).squeeze(0)
+            else:
+                out_resized = out
 
+            # Salviamo la slice nel volume finale
             prediction[z] = out_resized.cpu().numpy()
 
-            # libera memoria GPU
-            del input_tensor, outputs, out_slice, out_resized
+            # Libera memoria GPU
+            del input_tensor, outputs, out, out_resized
 
-            # #Conversione in tensore PyTorch [H, W] -> [1, 1, H, W] (Batch, Channel, Height, Width)
-            # input_tensor = (
-            #     torch.from_numpy(slice_2d)
-            #     .unsqueeze(0)
-            #     .unsqueeze(0)
-            #     .float()
-            #     .to(device)
-            # )
-            #
-            # input_tensor = resize_input(input_tensor)
-            #
-            # outputs = net(input_tensor)
-            #
-            # # Argmax diretto sulle logits
-            # out_slice = torch.argmax(outputs, dim=1).squeeze(0)
-            #
-            # # Resize della predizione alle dimensioni originali
-            # out_resized = resize_output(out_slice.unsqueeze(0)).squeeze(0)
-            #
-            # # Salviamo la slice nel volume finale
-            # prediction[z] = out_resized.cpu().numpy()
+        # Calcolo metriche per ogni classe (si salta la classe 0 = background)
 
     metric_list = []
     # Si salta la classe 0 (background)
@@ -447,10 +443,6 @@ def mock_test():
          traceback.print_exc()
 
 
-import h5py
-import numpy as np
-
-
 def inspect_h5_file(filepath):
     print("=" * 50)
     print(f"ISPEZIONE FILE: {filepath}")
@@ -483,5 +475,6 @@ def inspect_h5_file(filepath):
 
 if __name__ == "__main__":
     inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
+    mock_test()
 
 

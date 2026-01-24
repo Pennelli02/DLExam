@@ -100,7 +100,7 @@ Input: 224x224x3
    ↓ Layer3 (6x Bottleneck blocks, stride=2 nel primo)
 14x14x1024  ← Output CNN per Transformer
 ```
-
+pretrained su ImageNet1k.v1 e passeremo adesso su una versione Imagenet1k.v2. In teoria risulta essere imagenet21 però ricerco i pesi
 #### Dimensioni Corrette del Decoder CUP
 ```python
 class CUP(nn.Module):
@@ -208,3 +208,12 @@ La validazione sarà sia globale (avg) e singola per ogni organo per avere una v
 
 ### Numero di iterazioni
 nel paper è stato fissato 14.000 iterazioni però dato che il mio computer non riesce a gestire 24 di batch ho optato per un 8 di batch e quindi i valori delle epoche cambiano e quindi per essere sicuri è stato deciso di aumentare il numero di iterazioni (52 epoche * lenght(train) circa 14k)
+
+### Learning Rate
+nel paper si usa 0.01 come learning rate però dato il cambiamento del batch utilizzeremo:  Square Root Scaling Facebook Research (Goyal et al. 2017) passando a 0.006
+
+## Primo Training 
+Loss: 0.0639 DiceScore: 0.8953 CE: 0.0231
+
+non mi torna al momento la validazione e nella visualizzazione di tensorboard spesso immagini tutte nere
+Inoltre, non riesce a identificare il Liver e Right Kidney

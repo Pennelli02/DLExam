@@ -3,7 +3,7 @@ model_name: "TransUNet" #(TransUNet or NPTransUNet)
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
 type_tr: "sgd"
-lr: 0.01
+lr: 0.006 #sennò 0.01
 momentum: 0.9
 weight_decay: 0.0001
 batch: 8 # da valutare se 24 è troppo grande
@@ -29,5 +29,5 @@ save_every: 6 # così otteniamo 8 checkpoint
 checkpoint_dir: 'transunet_ckp'
 validation_frequency: 4 # valida ogni 4 epoche invece di ogni epoca
 
-resume: False # impostato così indico di prendere l'ultimo checkpoint
+resume: True # impostato così indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]

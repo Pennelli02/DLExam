@@ -339,7 +339,7 @@ def train_loop(model, train, valid, opts):
             torch.cuda.empty_cache()
 
          # Checkpoint periodico
-        if epoch % opts.save_every == 0:
+        if epoch % opts.save_every == 0 or epoch == opts.n_epoch_sy:
             save_checkpoint(model, optimizer, scheduler, epoch, loss.item(), step, opts)
 
 
