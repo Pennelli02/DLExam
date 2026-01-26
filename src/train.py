@@ -9,6 +9,7 @@ from rich.logging import RichHandler
 import numpy as np
 import torch
 from torch import nn
+from torch.amp import GradScaler, autocast
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import LambdaLR
@@ -223,7 +224,7 @@ def train_loop(model, train, valid, opts):
     # -----------------------------
     # Mixed Precision (AMP)
     # -----------------------------
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = GradScaler(device='cuda')
 
     # -----------------------------
     # Resume da checkpoint
@@ -244,7 +245,7 @@ def train_loop(model, train, valid, opts):
     # -----------------------------
     torch.backends.cudnn.benchmark = True
 
-    LOG.info(f"⚡ Training da epoca {start_epoch} a {opts.n_epoch_sy} | Step: {step}")
+    LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy} | Step: {step}")
 
     # -----------------------------
     # Training Loop
@@ -280,7 +281,7 @@ def train_loop(model, train, valid, opts):
             optimizer.zero_grad(set_to_none=True)
 
             # ===== Forward + Loss =====
-            with torch.cuda.amp.autocast():
+            with autocast(device_type='cuda'):
                 outputs = model(images)
                 dice_loss = dice_loss_fn(outputs, labels, softmax=True)
                 ce_loss = F.cross_entropy(outputs, labels.long())
