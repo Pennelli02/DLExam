@@ -217,3 +217,13 @@ Loss: 0.0639 DiceScore: 0.8953 CE: 0.0231
 
 non mi torna al momento la validazione e nella visualizzazione di tensorboard spesso immagini tutte nere
 Inoltre, non riesce a identificare il Liver e Right Kidney
+## Secondo Training
+64% e 39% rispettivamente  in DSC e HD95 nella validation
+
+## Commenti
+al momento otteniamo risultati buoni, ma non sufficienti. Valutiamo cosa può comportare queste grandi perdite. Optiamo per un batch di 24
+
+Al momento ottengo in validazione  MEDIA TOTALE    -> Dice: 0.6658 | HD95: 47.26 epoca 96 su 152
+
+### Velocità training
+da valutare una possibile accellerazione del training usando GradScalar() e num_workers per la validation possibile collo di bottiglia con dataloaders

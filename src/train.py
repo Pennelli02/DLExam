@@ -13,10 +13,8 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-
-import src.dataset
 from src.transUNet import PT_TransUNet, NPT_TransUNet
-from src.dataset import SynapseDataset
+from src.dataset import SynapseDataset, get_train_transform
 from src.utils import test_single_volume
 
 
@@ -154,7 +152,7 @@ def validate_model(model, valid_loader, opts):
 
             case_metrics = test_single_volume(
                 image, label, model,
-                classes=opts.n_classes, test_mode=True, test_save_path=opts.save_dir
+                classes=opts.n_classes, test_mode=True, test_save_path=opts.save_dir, case=case_name
             )
             performance_buffer.append(case_metrics)
 
@@ -187,16 +185,23 @@ def validate_model(model, valid_loader, opts):
 
 def train_loop(model, train, valid, opts):
     import tensorflow as tf
+    import time
+
+    # -----------------------------
+    # TensorBoard Writers
+    # -----------------------------
     train_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/train')
     val_writer = tf.summary.create_file_writer(f'tensorboard/{opts.model_name}/validation')
 
-    # Nomi organi per TensorBoard
+    # Nomi degli organi per logging
     organ_names = [
         "Aorta", "Gallbladder", "Left_Kidney", "Right_Kidney",
         "Liver", "Pancreas", "Spleen", "Stomach"
     ]
 
-    # Optimizer
+    # -----------------------------
+    # Optimizer e scheduler
+    # -----------------------------
     if opts.type_tr == "sgd":
         optimizer = torch.optim.SGD(
             model.parameters(),
@@ -204,143 +209,177 @@ def train_loop(model, train, valid, opts):
             momentum=opts.momentum,
             weight_decay=opts.weight_decay,
         )
-    #else:
-        #da valutare se testare con altri tipi di optimizer come adam
 
-    # Definizione Scheduler Poly LR (Basato su iterazioni totali)
-
-    max_iterations = len(train) * opts.n_epoch_sy # Numero totale di batch in tutto il training
-
-    poly_lr_lambda = lambda step: (1.0 - step / max_iterations) ** 0.9
+    # Poly LR Scheduler
+    max_iterations = len(train) * opts.n_epoch_sy
+    poly_lr_lambda = lambda iteration: (1.0 - iteration / max_iterations) ** 0.9
     scheduler = LambdaLR(optimizer, lr_lambda=poly_lr_lambda)
 
-    model.train()
-
-    # Loss function (Dice + CE secondo paper)
+    # -----------------------------
+    # Loss function
+    # -----------------------------
     dice_loss_fn = DiceLoss(n_classes=opts.n_classes)
 
+    # -----------------------------
+    # Mixed Precision (AMP)
+    # -----------------------------
+    scaler = torch.cuda.amp.GradScaler()
+
+    # -----------------------------
     # Resume da checkpoint
+    # -----------------------------
     start_epoch = 1
     global_step = 0
 
     if opts.resume:
-        checkpoint = load_checkpoint(model, optimizer, scheduler,opts)
+        checkpoint = load_checkpoint(model, optimizer, scheduler, opts)
         if checkpoint is not None:
             global_step = checkpoint.get('global_step', 0)
             start_epoch = checkpoint['epoch'] + 1
 
     step = global_step
 
-    LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy} e step: {step}")
+    # -----------------------------
+    # CUDNN benchmark
+    # -----------------------------
+    torch.backends.cudnn.benchmark = True
 
+    LOG.info(f"⚡ Training da epoca {start_epoch} a {opts.n_epoch_sy} | Step: {step}")
+
+    # -----------------------------
+    # Training Loop
+    # -----------------------------
     for epoch in range(start_epoch, opts.n_epoch_sy + 1):
         model.train()
         epoch_losses = []
         epoch_dice_losses = []
         epoch_ce_losses = []
 
-        for batch_i, batch in enumerate(train, 1):
-            images = batch['image'].to(opts.device)  # [B, 1, H, W]
-            labels = batch['label'].to(opts.device)  # [B, H, W]
+        # Timing diagnostics
+        data_load_times = []
+        compute_times = []
+        batch_end_time = time.time()
 
-            #DEBUG: : Stampa statistiche label
+        for batch_i, batch in enumerate(train, 1):
+            # ===== TIMING: Data Loading =====
+            data_time = time.time() - batch_end_time
+            data_load_times.append(data_time)
+
+            compute_start = time.time()
+
+            # ===== GPU Transfer =====
+            images = batch['image'].to(opts.device, non_blocking=True)
+            labels = batch['label'].to(opts.device, non_blocking=True)
+
+            # Controllo sicurezza
             unique_labels = torch.unique(labels)
             if unique_labels.max() >= opts.n_classes:
-                LOG.error(f" ERRORE: Label fuori range rilevate!")
-                LOG.error(f"  Valori trovati: {unique_labels.cpu().numpy()}")
-                LOG.error(f"  Min: {unique_labels.min()}, Max: {unique_labels.max()}")
-                LOG.error(f"  Num classes atteso: {opts.n_classes}")
-                LOG.error(f"  Case: {batch['case_name']}")
+                LOG.error(f" ERRORE: Label fuori range! Valori: {unique_labels.cpu().numpy()}")
                 raise ValueError("Label fuori range nel dataset!")
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
-            # Forward
-            outputs = model(images)  # [B, 9, 224, 224]
+            # ===== Forward + Loss =====
+            with torch.cuda.amp.autocast():
+                outputs = model(images)
+                dice_loss = dice_loss_fn(outputs, labels, softmax=True)
+                ce_loss = F.cross_entropy(outputs, labels.long())
+                loss = 0.5 * dice_loss + 0.5 * ce_loss
 
-            # Loss: Dice + CE (come nel paper)
-            dice_loss = dice_loss_fn(outputs, labels, softmax=True)
-            ce_loss = F.cross_entropy(outputs, labels.long())
-            loss = 0.5 * dice_loss + 0.5 * ce_loss
-
-            # Backward
-            loss.backward()
-            optimizer.step()
-
+            # ===== Backward =====
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
 
-            # Metriche
+            # ===== TIMING: Compute =====
+            compute_time = time.time() - compute_start
+            compute_times.append(compute_time)
+
+            # Salvataggio metriche
             epoch_losses.append(loss.item())
             epoch_dice_losses.append(dice_loss.item())
             epoch_ce_losses.append(ce_loss.item())
 
-            # Logging
+            # ===== LOGGING CON TIMING =====
             if batch_i % opts.log_every == 0:
                 train_loss = np.mean(epoch_losses[-opts.batch_window:])
                 train_dice_loss = np.mean(epoch_dice_losses[-opts.batch_window:])
                 train_ce_loss = np.mean(epoch_ce_losses[-opts.batch_window:])
-
-                # Calcola lo score per il log (1 - loss)
                 current_dice_score = 1 - train_dice_loss
 
+                # Calcola efficienza GPU
+                avg_data_time = np.mean(data_load_times[-opts.log_every:])
+                avg_compute_time = np.mean(compute_times[-opts.log_every:])
+                gpu_efficiency = avg_compute_time / (avg_data_time + avg_compute_time) * 100
+
+                # Console logging
                 msg = f'{epoch:03d}.{batch_i:03d}: '
-                msg += f'TotalLoss={train_loss:.4f} | '
-                msg += f'DiceScore={current_dice_score:.4f} | '
-                msg += f'CE={train_ce_loss:.4f}'
+                msg += f'Loss={train_loss:.4f} | Dice={current_dice_score:.4f} | CE={train_ce_loss:.4f} | '
+                msg += f'Data={avg_data_time * 1000:.0f}ms | GPU={gpu_efficiency:.0f}%  |  LR={optimizer.param_groups[0]['lr']}'
                 LOG.info(msg)
 
                 # TensorBoard
                 with train_writer.as_default():
-                    tf.summary.scalar('total_loss', train_loss, step=step)
-                    tf.summary.scalar('dice_loss', train_dice_loss, step=step)
-                    tf.summary.scalar('ce_loss', train_ce_loss, step=step)
+                    tf.summary.scalar('loss/total', train_loss, step=step)
+                    tf.summary.scalar('loss/dice', train_dice_loss, step=step)
+                    tf.summary.scalar('loss/ce', train_ce_loss, step=step)
+                    tf.summary.scalar('metrics/dice_score', current_dice_score, step=step)
 
-             #  Visualizzazione Immagini su TensorBoard
-            if step % 100 == 0:  # Ogni 100 iterazioni per non appesantire il disco
-                LOG.info("visualizzazione immagini su Tensorboard")
+            # ===== Visualizzazione Immagini (ogni 500 step) =====
+            if step % 500 == 0:
                 with train_writer.as_default():
                     idx = 0
-                    # Normalizzazione immagine per display
+                    # Immagine normalizzata
                     img_vis = (images[idx] - images[idx].min()) / (images[idx].max() - images[idx].min() + 1e-8)
-                    tf.summary.image('train/Image', img_vis.cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
-                                             step=step)
+                    tf.summary.image('train/Image',
+                                     img_vis.cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
+                                     step=step)
 
-                    # Predizione (argmax delle classi)
+                    # Predizione
                     pred = torch.argmax(torch.softmax(outputs[idx], dim=0), dim=0).unsqueeze(0).float()
                     tf.summary.image('train/Prediction',
-                                             (pred * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
-                                             step=step)
+                                     (pred * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
+                                     step=step)
 
                     # Ground Truth
                     gt = labels[idx].unsqueeze(0).float()
                     tf.summary.image('train/GroundTruth',
-                                             (gt * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...], step=step)
+                                     (gt * 25).cpu().numpy().transpose(1, 2, 0)[np.newaxis, ...],
+                                     step=step)
+
+            # Reset timer
+            batch_end_time = time.time()
             step += 1
 
-        # --- FASE DI VALIDAZIONE (Ogni fine 2 epoche) ---
-        # Usiamo la validazione volumetrica per monitorare i progressi "reali"
-        # opts.validation_frequency
+        # ===== VALIDAZIONE =====
         if epoch % opts.validation_frequency == 0:
+            LOG.info(f" VALIDAZIONE Volumetrica")
+
             val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
 
+
+            # TensorBoard validation metrics
             with val_writer.as_default():
-                 # Metriche globali
-                 tf.summary.scalar('val_dice_avg', val_dice, step=epoch)
-                 tf.summary.scalar('val_hd95_avg', val_hd95, step=epoch)
+                tf.summary.scalar('metrics/dice_avg', val_dice, step=epoch)
+                tf.summary.scalar('metrics/hd95_avg', val_hd95, step=epoch)
 
-                 # Metriche per-organo
-                 for i, organ_name in enumerate(organ_names):
-                    tf.summary.scalar(f'val_dice/{organ_name}',
-                                              per_organ_metrics[i, 0], step=epoch)
-                    tf.summary.scalar(f'val_hd95/{organ_name}',
-                                              per_organ_metrics[i, 1], step=epoch)
+                # Metriche per organo
+                for i, organ_name in enumerate(organ_names):
+                    tf.summary.scalar(f'dice/{organ_name}', per_organ_metrics[i, 0], step=epoch)
+                    tf.summary.scalar(f'hd95/{organ_name}', per_organ_metrics[i, 1], step=epoch)
 
-            # PULIZIA MEMORIA GPU: Fondamentale dopo la validazione volumetrica
+
+
+            # Pulizia memoria GPU
             torch.cuda.empty_cache()
 
-         # Checkpoint periodico
+        # ===== CHECKPOINT PERIODICI =====
         if epoch % opts.save_every == 0 or epoch == opts.n_epoch_sy:
-            save_checkpoint(model, optimizer, scheduler, epoch, loss.item(), step, opts)
+            save_checkpoint(model, optimizer, scheduler, epoch,
+                                      loss.item(), step, opts)
+
+    LOG.info(f" End training")
 
 
 def main(opts):
@@ -359,13 +398,13 @@ def main(opts):
     #creiamo i dataset di training e testing
     if opts.dataset_type == "Synapse":
         #prendiamo le immagini di training
-        train_dataset = SynapseDataset(opts, opts.train_dir, "train", src.dataset.get_train_transform(opts))
+        train_dataset = SynapseDataset(opts, opts.train_dir, "train", get_train_transform(opts))
         print(train_dataset.__len__())
         train_loader = DataLoader(train_dataset, batch_size=opts.batch, shuffle=True, num_workers=opts.num_workers, pin_memory=True)
 
         #prendiamo le immagini di validation
         val_dataset = SynapseDataset(opts, opts.validation_dir, "validation", None)
-        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=opts.num_workers, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
 
     elif opts.dataset_type == "ACDC":
         #TODO

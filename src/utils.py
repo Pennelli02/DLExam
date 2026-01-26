@@ -129,13 +129,13 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     image_list = sorted(glob.glob(os.path.join(raw_data_dir, "*.nii.gz")))
 
     if len(image_list) == 0:
-        print(f"❌ No files found in {raw_data_dir}")
+        print(f" No files found in {raw_data_dir}")
         return
 
     print(f"✓ Found {len(image_list)} volumes")
 
     # ========== MAPPING CORRETTO ==========
-    # Synapse original → TransUNet standard
+    # Synapse original -> TransUNet standard
     LABEL_MAPPING = {
         0: 0,  # Background
         1: 7,  # Spleen
@@ -155,12 +155,6 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
         test_cases = [c for c in all_cases if c not in train_cases]
 
-        print(f"\n{'=' * 70}")
-        print(f"OFFICIAL PAPER SPLIT")
-        print(f"{'=' * 70}")
-        print(f"Training: {len(train_cases)} cases")
-        print(f"Validation: {len(test_cases)} cases")
-        print(f"{'=' * 70}\n")
     else:
         random.seed(random_seed)
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
@@ -178,7 +172,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         label_path = os.path.join(label_data_dir, f"label{case_num}.nii.gz")
 
         if not os.path.exists(label_path):
-            print(f"\n⚠️  Warning: Label not found for {case_name}")
+            print(f"\n  Warning: Label not found for {case_name}")
             continue
 
         # Carica volumi
@@ -189,7 +183,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         image = np.clip(image, -125, 275)
         image = (image + 125) / 400.0  # Normalizza [0, 1]
 
-        # ========== RIMAPPATURA LABEL (CRITICO!) ==========
+        # ========== RIMAPPATURA LABEL ==========
         label = np.zeros_like(label_raw, dtype=np.uint8)
 
         print(f"\n[{case_name}] Original label values: {np.unique(label_raw)}")
@@ -203,12 +197,12 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         # Verifica mapping
         unique_labels = np.unique(label)
         if unique_labels.max() > 8:
-            print(f"❌ ERROR {case_name}: Labels still > 8: {unique_labels}")
+            print(f" ERROR {case_name}: Labels still > 8: {unique_labels}")
             continue
 
         # Verifica che Liver (5) sia presente (dovrebbe esserci nella maggior parte dei casi)
         if 5 not in unique_labels:
-            print(f"⚠️  WARNING {case_name}: Liver (class 5) not found after remapping!")
+            print(f"  WARNING {case_name}: Liver (class 5) not found after remapping!")
 
         # Count voxels per class
         for cls in range(9):
@@ -246,15 +240,12 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
 
             val_volume_count += 1
 
-    print(f"\n{'=' * 70}")
     print(f"PREPROCESSING COMPLETE!")
-    print(f"{'=' * 70}")
     print(f"Training slices: {train_slice_count}")
     print(f"Validation volumes: {val_volume_count}")
     print(f"\nOutput:")
     print(f"  Train: {train_out_dir}")
     print(f"  Validation: {test_out_dir}")
-    print(f"{'=' * 70}\n")
 
 
 def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
@@ -394,12 +385,12 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
         # Crea directory se non esiste
         os.makedirs(test_save_path, exist_ok=True)
 
-        # ======== VERIFICA VALORI PRIMA DI SALVARE ========
-        print(f"\n[DEBUG {case}] Verifica valori pre-salvataggio:")
-        print(f"  Prediction shape: {prediction.shape}")
-        print(f"  Prediction dtype: {prediction.dtype}")
-        print(f"  Prediction unique values: {np.unique(prediction)}")
-        print(f"  Prediction min/max: {prediction.min():.2f} / {prediction.max():.2f}")
+        # # ======== VERIFICA VALORI PRIMA DI SALVARE ========
+        # print(f"\n[DEBUG {case}] Verifica valori pre-salvataggio:")
+        # print(f"  Prediction shape: {prediction.shape}")
+        # print(f"  Prediction dtype: {prediction.dtype}")
+        # print(f"  Prediction unique values: {np.unique(prediction)}")
+        # print(f"  Prediction min/max: {prediction.min():.2f} / {prediction.max():.2f}")
 
         img_itk = sitk.GetImageFromArray(image.astype(np.float32))
         prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
@@ -549,18 +540,18 @@ def inspect_label_distribution(h5_file_path):
 
 
 if __name__ == "__main__":
-    inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
-    mock_test()
+    # inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
+    # mock_test()
+    #preprocess_synapse()
     # Test su tutti i file validation
     validation_dir = "dataset/project_transunet/validation_vol_h5"
     for h5_file in sorted(Path(validation_dir).glob("*.h5")):
         classes_present = inspect_label_distribution(str(h5_file))
-
+    #
         # VERIFICA: Liver (classe 5) dovrebbe essere presente in TUTTI i file
         if 5 not in classes_present:
-            print(f"⚠️  WARNING: Liver (class 5) NOT FOUND in {h5_file.name}!")
-
+            print(f"️  WARNING: Liver (class 5) NOT FOUND in {h5_file.name}!")
+    #
         # VERIFICA: Right Kidney (classe 4) dovrebbe essere presente
         if 4 not in classes_present:
-            print(f"⚠️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
-
+            print(f"️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
