@@ -5,6 +5,8 @@ from torch import nn
 from torchvision import models
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import vit_b_16, ViT_B_16_Weights
+from torchvision.transforms import v2
+
 
 #---------------------------------------------------------------
 # Qui saranno presenti i modelli in versione no pre trained
@@ -451,6 +453,10 @@ class SegmentationHead(nn.Module):
 class PT_TransUNet(nn.Module):
     def __init__(self, img_size: int = 224, embed_dim: int = 768):
         super().__init__()
+        self.normalizer = v2.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
         self.encoder = PT_Encoder(img_size=img_size)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),
@@ -458,6 +464,7 @@ class PT_TransUNet(nn.Module):
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.normalizer(x)
         x, skip = self.encoder(x)
         x = reshape(x)
         x = self.decoder(x, skip)

@@ -142,7 +142,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         2: 4,  # Right Kidney
         3: 3,  # Left Kidney
         4: 2,  # Gallbladder
-        6: 5,  # Liver ← CHIAVE!
+        6: 5,  # Liver
         7: 8,  # Stomach
         8: 1,  # Aorta
         11: 6,  # Pancreas
@@ -234,6 +234,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
             label_vol = label.transpose(2, 0, 1)
 
             vol_name = f"{case_name}.npy.h5"
+            #print(f"Saving H5 {vol_name} - Range: [{image_vol.min()}, {image_vol.max()}]")
             with h5py.File(os.path.join(test_out_dir, vol_name), 'w') as f:
                 f.create_dataset("image", data=image_vol.astype(np.float32), compression="gzip")
                 f.create_dataset("label", data=label_vol.astype(np.uint8), compression="gzip")
@@ -247,6 +248,52 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     print(f"  Train: {train_out_dir}")
     print(f"  Validation: {test_out_dir}")
 
+
+# def debug_disk_data():
+#     train_dir = "dataset/project_transunet/train_npz"
+#     val_dir = "dataset/project_transunet/validation_vol_h5"
+#
+#     print("=" * 50)
+#     print("DEBUG DATI PROCESSATI SU DISCO")
+#     print("=" * 50)
+#
+#     # 1. Controllo Campione Training (.npz)
+#     train_files = list(Path(train_dir).glob("*.npz"))
+#     if train_files:
+#         sample_train = train_files[0]
+#         data = np.load(sample_train)
+#         img, lab = data['image'], data['label']
+#         print(f"\n[TRAINING SLICE] {sample_train.name}")
+#         print(f"  Shape: {img.shape}")
+#         print(f"  Range Pixel: [{img.min():.4f}, {img.max():.4f}]")
+#         print(f"  Classi Label: {np.unique(lab)}")
+#
+#         if img.max() > 1.0 or img.min() < 0.0:
+#             print("  (!) ATTENZIONE: I dati di training non sono nel range [0, 1]!")
+#     else:
+#         print("\n[!] Nessun file .npz trovato in training.")
+#
+#     # 2. Controllo Campione Validazione (.h5)
+#     val_files = list(Path(val_dir).glob("*.h5"))
+#     if val_files:
+#         sample_val = val_files[0]
+#         with h5py.File(sample_val, 'r') as f:
+#             img = f['image'][:]
+#             lab = f['label'][:]
+#         print(f"\n[VALIDATION VOLUME] {sample_val.name}")
+#         print(f"  Shape: {img.shape} (Z, H, W)")
+#         print(f"  Range Pixel: [{img.min():.4f}, {img.max():.4f}]")
+#         print(f"  Classi Label: {np.unique(lab)}")
+#
+#         if img.min() < 0 or img.max() > 1:
+#             print("  (!) ERRORE CRITICO: Il volume di validazione ha range HU grezzo!")
+#             print("      Il training vede [0,1], la validazione vede HU. Il Dice sarà bassissimo.")
+#     else:
+#         print("\n[!] Nessun file .h5 trovato in validazione.")
+#
+#     # 3. Verifica Coerenza Mapping
+#     # Se il fegato è la classe 5 nel training, deve esserlo anche nel test
+#     print("\n" + "=" * 50)
 
 def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
         """
@@ -299,6 +346,35 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
 
     image = image.squeeze(0).cpu().detach().numpy()
     label = label.squeeze(0).cpu().detach().numpy()
+
+    # ================== BLOCCO DEBUG INPUT ==================
+    print(f"\n{'=' * 40}")
+    print(f"DEBUG DATA RANGE - Caso: {case}")
+    print(f"{'=' * 40}")
+
+    # Statistiche Immagine
+    img_min, img_max = image.min(), image.max()
+    print(f"INPUT IMAGE:")
+    print(f"  -> Range: [{img_min:.2f}, {img_max:.2f}]")
+    print(f"  -> Media: {image.mean():.2f} | Std: {image.std():.2f}")
+
+    # Diagnosi Automatica
+    if img_min < -500:
+        print("\n[!] DIAGNOSI: Valori in Hounsfield Units (HU) rilevati.")
+        print("    Il modello si aspetta dati clippati e normalizzati (es. [0, 1]).")
+        print("    AZIONE: Applica np.clip(image, -125, 275) e poi normalizza.")
+    elif img_min >= 0 and img_max <= 1:
+        print("\n[v] DIAGNOSI: Dati nel range [0, 1]. Corretto.")
+    else:
+        print("\n[?] DIAGNOSI: Range inusuale. Verifica il pre-processing del training.")
+
+    # Verifica Ground Truth
+    unique_labels = np.unique(label)
+    print(f"\nGROUND TRUTH:")
+    print(f"  -> Classi presenti: {unique_labels}")
+    if max(unique_labels) > classes:
+        print(f"  [!] ERRORE: Trovate label ({max(unique_labels)}) superiori al num_classes configurato!")
+    print(f"{'=' * 40}\n")
 
     # Se dopo lo squeeze image è ancora 4D (raro ma possibile), forziamo:
     if image.ndim == 4:
@@ -540,18 +616,19 @@ def inspect_label_distribution(h5_file_path):
 
 
 if __name__ == "__main__":
-    # inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
-    # mock_test()
+    inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
+    #mock_test()
+    #debug_disk_data()
     #preprocess_synapse()
     # Test su tutti i file validation
-    validation_dir = "dataset/project_transunet/validation_vol_h5"
-    for h5_file in sorted(Path(validation_dir).glob("*.h5")):
-        classes_present = inspect_label_distribution(str(h5_file))
-    #
-        # VERIFICA: Liver (classe 5) dovrebbe essere presente in TUTTI i file
-        if 5 not in classes_present:
-            print(f"️  WARNING: Liver (class 5) NOT FOUND in {h5_file.name}!")
-    #
-        # VERIFICA: Right Kidney (classe 4) dovrebbe essere presente
-        if 4 not in classes_present:
-            print(f"️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
+    # validation_dir = "dataset/project_transunet/validation_vol_h5"
+    # for h5_file in sorted(Path(validation_dir).glob("*.h5")):
+    #     classes_present = inspect_label_distribution(str(h5_file))
+    # #
+    #     # VERIFICA: Liver (classe 5) dovrebbe essere presente in TUTTI i file
+    #     if 5 not in classes_present:
+    #         print(f"️  WARNING: Liver (class 5) NOT FOUND in {h5_file.name}!")
+    # #
+    #     # VERIFICA: Right Kidney (classe 4) dovrebbe essere presente
+    #     if 4 not in classes_present:
+    #         print(f"️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
