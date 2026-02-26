@@ -1,5 +1,6 @@
 import random
 import zipfile
+from collections import defaultdict
 from pathlib import Path
 import os
 import glob
@@ -498,22 +499,6 @@ def mock_test():
      # Se vuoi testare il TUO modello reale:
      model = PT_TransUNet(img_size=img_size).to(device)
 
-     # Per il test rapido usiamo una classe minima che simula l'errore
-#     class MockNet(torch.nn.Module):
-#         def __init__(self, n_cls):
-#             super().__init__()
-#             self.conv = torch.nn.Conv2d(3, n_cls, kernel_size=1)
-#
-#         def forward(self, x):
-#             # Simuliamo la logica incriminata del PTResnet
-#             if x.dim() == 3: x = x.unsqueeze(0)
-#             if x.shape[1] == 1:
-#                 print(f"   [Debug] Input shape prima di expand: {x.shape}")
-#                 x = x.expand(-1, 3, -1, -1)
-#                 print(f"   [Debug] Input shape dopo expand: {x.shape}")
-#             return self.conv(x)
-#
-#     model = MockNet(num_classes).to(device)
      model.eval()
 #
 #     # 3. Creazione Dati Sintetici (Simuliamo un volume Synapse)
@@ -544,7 +529,6 @@ def mock_test():
          print(f"Errore riscontrato: {e}")
          import traceback
          traceback.print_exc()
-
 
 def inspect_h5_file(filepath):
     print("=" * 50)
@@ -617,7 +601,8 @@ def inspect_label_distribution(h5_file_path):
 
 if __name__ == "__main__":
     inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
-    #mock_test()
+    mock_test()
+    #inspect_npz("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
     #debug_disk_data()
     #preprocess_synapse()
     # Test su tutti i file validation

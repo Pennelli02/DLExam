@@ -182,3 +182,114 @@ def save_and_display_segmentation(data_path, output_dir="outputs"):
     plt.show()
 
     return im_path, lb_path
+
+def npz_summary(npz_path: str, max_depth: int = 3) -> None:
+    """
+    Stampa la struttura del file .npz in stile torchinfo:
+    gerarchia indentata con layer name, shape e conteggio parametri.
+
+    :param npz_path:  path del file .npz
+    :param max_depth: livelli di indentazione gerarchica (default 3)
+    """
+    w     = dict(np.load(npz_path, allow_pickle=False))
+    keys  = sorted(w.keys())
+    total = sum(v.size for v in w.values())
+
+    # ── intestazione ─────────────────────────────────────────────────────────
+    print()
+    print("┌" + "─" * 88 + "┐")
+    print(f"│  {'NPZ SUMMARY':^86}│")
+    print(f"│  File : {npz_path:<77}│")
+    print(f"│  Layer: {len(keys):<10}  Parametri totali: {total:<52,}│")
+    print("├" + "─" * 42 + "┬" + "─" * 28 + "┬" + "─" * 16 + "┤")
+    print(f"│  {'Layer name':<40}│ {'Shape':<27}│ {'Params':>14} │")
+    print("├" + "─" * 42 + "┼" + "─" * 28 + "┼" + "─" * 16 + "┤")
+
+    # ── costruisci albero ────────────────────────────────────────────────────
+    # nodo = {"_keys": [...], "children": {name: nodo}}
+    def _new_node():
+        return {"_keys": [], "children": {}}
+
+    root = _new_node()
+    for k in keys:
+        parts = k.split("/")
+        node  = root
+        for part in parts[:-1]:
+            node["children"].setdefault(part, _new_node())
+            node = node["children"][part]
+        node["_keys"].append(k)
+
+    # ── stampa ricorsiva ─────────────────────────────────────────────────────
+    def _params_in_node(node) -> int:
+        total = sum(w[k].size for k in node["_keys"])
+        for child in node["children"].values():
+            total += _params_in_node(child)
+        return total
+
+    def _print_node(node, prefix: str, depth: int, is_last: bool):
+        if depth > max_depth:
+            return
+
+        connector = "└─ " if is_last else "├─ "
+        child_names = list(node["children"].keys())
+
+        # Stampa i tensori foglia di questo nodo
+        for ki, k in enumerate(node["_keys"]):
+            leaf_last = (ki == len(node["_keys"]) - 1) and not child_names
+            lc = "└─ " if leaf_last else "├─ "
+            leaf_name = k.split("/")[-1]
+            shape_str = str(w[k].shape)
+            params    = w[k].size
+            row_name  = (prefix + lc + leaf_name)[:40]
+            print(f"│  {row_name:<40}│ {shape_str:<27}│ {params:>14,} │")
+
+        # Stampa i nodi figli
+        for ci, cname in enumerate(child_names):
+            clast     = ci == len(child_names) - 1
+            cnode     = node["children"][cname]
+            cparams   = _params_in_node(cnode)
+            n_tensors = sum(1 for _ in _iter_leaves(cnode))
+            indent    = prefix + ("   " if is_last else "│  ")
+
+            # riga sezione
+            sec_label = (indent + ("└─ " if clast else "├─ ") + cname)[:40]
+            sec_info  = f"[{n_tensors} tensori]"
+            print(f"│  {sec_label:<40}│ {sec_info:<27}│ {cparams:>14,} │")
+
+            # ricorre nei figli
+            _print_node(cnode,
+                        indent + ("   " if clast else "│  "),
+                        depth + 1,
+                        clast)
+
+    def _iter_leaves(node):
+        yield from node["_keys"]
+        for child in node["children"].values():
+            yield from _iter_leaves(child)
+
+    # Stampa i top-level
+    top_keys   = list(root["_keys"])
+    top_childs = list(root["children"].keys())
+
+    for k in top_keys:
+        shape_str = str(w[k].shape)
+        params    = w[k].size
+        print(f"│  {'├─ ' + k:<40}│ {shape_str:<27}│ {params:>14,} │")
+
+    for ci, cname in enumerate(top_childs):
+        clast  = ci == len(top_childs) - 1
+        cnode  = root["children"][cname]
+        cp     = _params_in_node(cnode)
+        ntens  = sum(1 for _ in _iter_leaves(cnode))
+        lc     = "└─ " if clast else "├─ "
+        sec_label = (lc + cname)[:40]
+        print(f"│  {sec_label:<40}│ {'[' + str(ntens) + ' tensori]':<27}│ {cp:>14,} │")
+        _print_node(cnode, "   " if clast else "│  ", 2, clast)
+
+    # ── footer ────────────────────────────────────────────────────────────────
+    print("├" + "─" * 42 + "┴" + "─" * 28 + "┴" + "─" * 16 + "┤")
+    print(f"│  {'TOTALE PARAMETRI':>40}   {total:>42,} │")
+    print("└" + "─" * 88 + "┘\n")
+
+if __name__ == "__main__":
+    npz_summary("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")

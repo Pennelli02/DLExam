@@ -223,6 +223,9 @@ Inoltre, non riesce a identificare il Liver e Right Kidney
 ## Terzo Training 
 70% e 37%
 
+## Quarto training
+70% e 39% la normalizzazione statistica non ha colmato il gap
+
 ## Commenti
 al momento otteniamo risultati buoni, ma non sufficienti. Valutiamo cosa può comportare queste grandi perdite. Optiamo per un batch di 24
 
@@ -232,3 +235,7 @@ Proviamo con una normalizzazione statistica su imagenet se non riusciamo a colma
 
 ### Velocità training
  accellerazione del training usando GradScalar() e num_workers per la validation possibile collo di bottiglia con dataloaders
+ 
+### Modelli Pretrained
+seguendo il paper abbiamo recuperato il checkpoint R50+ViT-B_16.npz perché loro usano un modello tutto insieme da fine-tunare
+cartella è : PreTrainedModels\imagenet21k\R50+ViT-B_16.npz

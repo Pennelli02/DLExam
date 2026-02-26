@@ -279,6 +279,10 @@ class Encoder(nn.Module):
 class PTResnet(nn.Module):
     def __init__(self):
         super().__init__()
+        self.normalizer = v2.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
         backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)  #1/2
         self.maxpool = backbone.maxpool
@@ -300,6 +304,7 @@ class PTResnet(nn.Module):
             # .expand è meglio di .repeat: non copia i dati in memoria, crea solo viste
             # -1 indica a PyTorch di mantenere la dimensione esistente su quell'asse
             x = x.expand(-1, 3, -1, -1)
+        x = self.normalizer(x)
 
         x = self.fs(x)
         x1 = x
@@ -453,10 +458,6 @@ class SegmentationHead(nn.Module):
 class PT_TransUNet(nn.Module):
     def __init__(self, img_size: int = 224, embed_dim: int = 768):
         super().__init__()
-        self.normalizer = v2.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
         self.encoder = PT_Encoder(img_size=img_size)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),
@@ -464,7 +465,6 @@ class PT_TransUNet(nn.Module):
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.normalizer(x)
         x, skip = self.encoder(x)
         x = reshape(x)
         x = self.decoder(x, skip)
@@ -498,7 +498,7 @@ def test_resnet50_encoder():
     print("=" * 80)
 
     model = ResNet50(in_channels=3)
-    dummy_input = torch.randn(2, 3, 224, 224)
+    dummy_input = torch.randn(2, 1, 224, 224)
 
     print(f"\n Input: {dummy_input.shape}")
 
@@ -540,7 +540,7 @@ def test_pretrained_resnet():
     print("=" * 80)
 
     model = PTResnet()
-    dummy_input = torch.randn(2, 3, 224, 224)
+    dummy_input = torch.randn(2, 1, 224, 224)
 
     print(f"\n Input: {dummy_input.shape}")
 
