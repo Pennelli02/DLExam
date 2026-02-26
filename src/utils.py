@@ -8,6 +8,7 @@ import numpy as np
 import nibabel as nib
 import h5py
 import torch
+from dotenv import load_dotenv
 from tqdm import tqdm
 import synapseclient
 import synapseutils
@@ -20,6 +21,11 @@ from src.transUNet import PT_TransUNet
 
 
 def getDataset():
+    load_dotenv()
+    token = os.environ.get("SYNAPSE_TOKEN")
+    if not token:
+        raise EnvironmentError("SYNAPSE_TOKEN non trovato nel file .env")
+
     # Percorso dove salvare i file
     dataset_dir = os.path.join("src", "dataset")
 
@@ -28,7 +34,7 @@ def getDataset():
 
     # Login a Synapse
     syn = synapseclient.Synapse()
-    syn.login(authToken="eyJ0eXAiOiJKV1QiLCJraWQiOiJXN05OOldMSlQ6SjVSSzpMN1RMOlQ3TDc6M1ZYNjpKRU9VOjY0NFI6VTNJWDo1S1oyOjdaQ0s6RlBUSCIsImFsZyI6IlJTMjU2In0.eyJhY2Nlc3MiOnsic2NvcGUiOlsidmlldyIsImRvd25sb2FkIl0sIm9pZGNfY2xhaW1zIjp7fX0sInRva2VuX3R5cGUiOiJQRVJTT05BTF9BQ0NFU1NfVE9LRU4iLCJpc3MiOiJodHRwczovL3JlcG8tcHJvZC5wcm9kLnNhZ2ViYXNlLm9yZy9hdXRoL3YxIiwiYXVkIjoiMCIsIm5iZiI6MTc2ODc2MDU3NywiaWF0IjoxNzY4NzYwNTc3LCJqdGkiOiIzMTE1NyIsInN1YiI6IjM1NzEwMzUifQ.oLL7_Syvjxzwb-pNnUAZ0sqoORTheECa7F04eiNc2qSOA2h-ITIPEKGbZOoTp8IZ-Kd1yRICqV4A_p7wlE7Rsh28_bOwgoDXN-265ZV-srXpvCrokkbWtz7bMwkNYtMO4DxAnoMzs9XNQI32-2Xu_RwVbVcEzmrtaLpPd5PxryRtnywzCLEm2lJBKsDekAS_Gib3eE9JZs_TZ6VoLKKqYmkynCinH_t2v3meGFxTP23BKRu_9ReSU6Q0CPlxwsKtiA7DSsywx4T7wiGVon5Rlib099UaieGF41RKJTT3ScJmiMrE9Fhd9q4l1fmpymx0eMT3FIqHLDKMwIe4qboLKg")
+    syn.login(authToken=token)
 
     # Scarica i file nella cartella src/dataset
     files = synapseutils.syncFromSynapse(
