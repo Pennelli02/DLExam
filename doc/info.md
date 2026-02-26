@@ -239,3 +239,5 @@ Proviamo con una normalizzazione statistica su imagenet se non riusciamo a colma
 ### Modelli Pretrained
 seguendo il paper abbiamo recuperato il checkpoint R50+ViT-B_16.npz perché loro usano un modello tutto insieme da fine-tunare
 cartella è : PreTrainedModels\imagenet21k\R50+ViT-B_16.npz
+
+da valutare: *tale modello pretrained utilizza la group norm e non la classica batch norm*

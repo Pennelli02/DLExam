@@ -2,6 +2,7 @@ pre_trained: True # scelgo con vero o falso se usare il modello pretrained e non
 model_name: "TransUNet" #(TransUNet or NPTransUNet)
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
+checkpoint_net: True # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
 type_tr: "sgd"
 lr: 0.01 #sennò 0.01
 momentum: 0.9
