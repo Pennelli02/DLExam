@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from src.transUNet import PT_TransUNet, NPT_TransUNet
+from src.transUNet import PT_TransUNet, NPT_TransUNet, CheckpointNet
 from src.dataset import SynapseDataset, get_train_transform
 from src.utils import test_single_volume
 
@@ -383,11 +383,17 @@ def train_loop(model, train, valid, opts):
     LOG.info(f" End training")
 
 
+
+
+
 def main(opts):
     from visualizer import visualize
     input_data = torch.randn(opts.batch, 1, opts.image_size, opts.image_size)
     if opts.pre_trained:
-        model = PT_TransUNet()
+        if opts.checkpoint_net:
+            model= CheckpointNet()
+        else:
+            model = PT_TransUNet()
     else:
         model = NPT_TransUNet()
 

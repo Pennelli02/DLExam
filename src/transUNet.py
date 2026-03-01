@@ -1,4 +1,4 @@
-
+import numpy as np
 import torch
 import torchvision
 from torch import nn
@@ -7,12 +7,14 @@ from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 from torchvision.transforms import v2
 
+from src.utils import load_conv, load_gn, load_ln, trans
+
 
 #---------------------------------------------------------------
 # Qui saranno presenti i modelli in versione no pre trained
 # RESNET50
 
-def reshape (x: torch.Tensor) -> torch.Tensor:
+def reshape(x: torch.Tensor) -> torch.Tensor:
     """
     Trasforma la sequenza di token del Transformer in una mappa di feature 2D
     per il decoder convoluzionale (CUP).
@@ -29,7 +31,7 @@ def reshape (x: torch.Tensor) -> torch.Tensor:
     batch_size, num_tokens, embed_dim = x.shape
 
     # Calcoliamo la dimensione della griglia (es. sqrt(196) = 14)
-    grid_size = int(num_tokens**0.5)
+    grid_size = int(num_tokens ** 0.5)
 
     # 1. Riordina i token in una griglia spaziale (H, W)
     # Forma: [B, 14, 14, 768]
@@ -51,7 +53,8 @@ class Bottleneck(nn.Module):
     @param stride
     @param downsample
     """
-    def __init__(self, in_channels: int, out_channels: int, stride: int =1, downsample=None):
+
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1, downsample=None):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
@@ -381,6 +384,237 @@ class PT_Encoder(nn.Module):
         return x, skips
 
 
+# ------------------------------------------------
+# models from directory PreTrainedModels
+
+#blocchi con group norm
+class BottleneckGN(nn.Module):
+    """
+    Bottleneck con GroupNorm (num_groups=32), speculare al file .npz ufficiale.
+    """
+    def __init__(self, in_ch: int, mid_ch: int,
+                 stride: int = 1, downsample: nn.Module = None,
+                 num_groups: int = 32):
+        super().__init__()
+        out_ch     = mid_ch * 4
+        self.conv1 = nn.Conv2d(in_ch,  mid_ch, kernel_size=1, bias=False)
+        self.gn1   = nn.GroupNorm(num_groups, mid_ch)
+        self.conv2 = nn.Conv2d(mid_ch, mid_ch, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.gn2   = nn.GroupNorm(num_groups, mid_ch)
+        self.conv3 = nn.Conv2d(mid_ch, out_ch, kernel_size=1, bias=False)
+        self.gn3   = nn.GroupNorm(num_groups, out_ch)
+        self.relu       = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x if self.downsample is None else self.downsample(x)
+        out = self.relu(self.gn1(self.conv1(x)))
+        out = self.relu(self.gn2(self.conv2(out)))
+        out = self.gn3(self.conv3(out))
+        return self.relu(out + residual)
+
+
+def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int) -> nn.Sequential:
+    out_ch     = mid_ch * 4
+    downsample = nn.Sequential(
+        nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
+        nn.GroupNorm(32, out_ch)
+    )
+    blocks = [BottleneckGN(in_ch, mid_ch, stride=stride, downsample=downsample)]
+    for _ in range(1, n_blocks):
+        blocks.append(BottleneckGN(out_ch, mid_ch))
+    return nn.Sequential(*blocks)
+
+
+#blocco transformer compatibile col .npz
+
+class TransformerBlockNpz(nn.Module):
+    """
+    Transformer block con nomi dei sotto-moduli allineati al caricamento
+    dei pesi dal file .npz (ln_1, ln_2, self_attention, mlp).
+    """
+    def __init__(self, embed_dim: int = 768, num_heads: int = 12,
+                 mlp_dim: int = 3072, dropout: float = 0.0):
+        super().__init__()
+        self.ln_1           = nn.LayerNorm(embed_dim)
+        self.self_attention = nn.MultiheadAttention(embed_dim, num_heads,
+                                                    dropout=dropout, batch_first=True)
+        self.ln_2 = nn.LayerNorm(embed_dim)
+        self.mlp  = nn.Sequential(
+            nn.Linear(embed_dim, mlp_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(mlp_dim, embed_dim),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        normed   = self.ln_1(x)
+        attn, _  = self.self_attention(normed, normed, normed, need_weights=False)
+        x = x + attn
+        x = x + self.mlp(self.ln_2(x))
+        return x
+
+# encoder dal checkpoint
+
+class CheckpointEncoder(nn.Module):
+    """
+    Encoder ibrido ResNet50-GN + ViT-B/16 costruito direttamente
+    dai pesi del file R50+ViT-B_16.npz.
+
+    Differenze chiave rispetto alle versioni precedenti:
+      • GroupNorm (num_groups=32) al posto di BatchNorm
+      • layer3 ha 9 blocchi (non 6) come nel checkpoint ufficiale
+      • embedding_proj carica anche il bias dal .npz
+
+    Output identico a PT_Encoder e Encoder:
+        forward(x) → (tokens [B,196,768], skips [x1,x2,x3])
+    Compatibile drop-in con il decoder CUP esistente.
+    """
+
+    def __init__(self, img_size: int = 224, embed_dim: int = 768,
+                 num_heads: int = 12, mlp_dim: int = 3072,
+                 n_transformer_blocks: int = 12):
+        super().__init__()
+
+        # ResNet50-GN
+        self.conv1   = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.gn_root = nn.GroupNorm(32, 64)
+        self.relu    = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        self.layer1 = _make_gn_layer(in_ch=64,  mid_ch=64,  n_blocks=3, stride=1)  # 3 unit
+        self.layer2 = _make_gn_layer(in_ch=256, mid_ch=128, n_blocks=4, stride=2)  # 4 unit
+        self.layer3 = _make_gn_layer(in_ch=512, mid_ch=256, n_blocks=9, stride=2)  # 9 unit ← dal .npz
+
+        #  proiezione 1×1: 1024 → embed_dim
+        self.embedding_proj = nn.Conv2d(1024, embed_dim, kernel_size=1)
+
+        #  positional embedding [1, 196, embed_dim]
+        num_patches             = (img_size // 16) ** 2          # 196
+        self.position_embedding = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+        self.dropout            = nn.Dropout(0.0)
+
+        # 12 blocchi Transformer
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlockNpz(embed_dim, num_heads, mlp_dim)
+            for _ in range(n_transformer_blocks)
+        ])
+        self.norm = nn.LayerNorm(embed_dim)
+
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        if x.dim() == 3:     x = x.unsqueeze(0)
+        if x.shape[1] == 1:  x = x.expand(-1, 3, -1, -1)   # grayscale → 3ch
+
+        # CNN
+        x  = self.relu(self.gn_root(self.conv1(x)))
+        x1 = x                                               # skip [B, 64,  112, 112]
+        x  = self.maxpool(x)
+        x  = self.layer1(x)
+        x2 = x                                               # skip [B, 256,  56,  56]
+        x  = self.layer2(x)
+        x3 = x                                               # skip [B, 512,  28,  28]
+        x  = self.layer3(x)                                  #      [B,1024,  14,  14]
+
+        # Proiezione + flatten
+        x = self.embedding_proj(x)                           # [B, 768, 14, 14]
+        x = x.flatten(2).transpose(1, 2)                     # [B, 196, 768]
+
+        # Transformer
+        x = self.dropout(x + self.position_embedding)
+        for block in self.transformer_blocks:
+            x = block(x)
+        x = self.norm(x)                                     # [B, 196, 768]
+
+        return x, [x1, x2, x3]
+
+    def load_npz(self, npz_path: str, verbose: bool = True) -> "CheckpointEncoder":
+        """
+        Carica i pesi da R50+ViT-B_16.npz.
+        Ritorna self per uso in catena:
+            encoder = CheckpointEncoder().load_npz("R50+ViT-B_16.npz")
+        """
+        w = dict(np.load(npz_path, allow_pickle=False))
+
+        if verbose:
+            print(f"\n{'─' * 55}")
+            print(f"  Caricamento checkpoint: {npz_path}")
+            print(f"{'─' * 55}")
+
+        # conv_root + gn_root
+        load_conv(self.conv1, w['conv_root/kernel'])
+        load_gn(self.gn_root, w['gn_root/scale'], w['gn_root/bias'])
+        if verbose: print("  ✓ conv_root + gn_root")
+
+        # blocchi ResNet
+        for block_i, (layer, n_units) in enumerate(
+                [(self.layer1, 3), (self.layer2, 4), (self.layer3, 9)], start=1
+        ):
+            for unit_j in range(1, n_units + 1):
+                m = layer[unit_j - 1]
+                p = f'block{block_i}/unit{unit_j}'
+                load_conv(m.conv1, w[f'{p}/conv1/kernel'])
+                load_conv(m.conv2, w[f'{p}/conv2/kernel'])
+                load_conv(m.conv3, w[f'{p}/conv3/kernel'])
+                load_gn(m.gn1, w[f'{p}/gn1/scale'], w[f'{p}/gn1/bias'])
+                load_gn(m.gn2, w[f'{p}/gn2/scale'], w[f'{p}/gn2/bias'])
+                load_gn(m.gn3, w[f'{p}/gn3/scale'], w[f'{p}/gn3/bias'])
+                if m.downsample is not None:
+                    load_conv(m.downsample[0], w[f'{p}/conv_proj/kernel'])
+                    load_gn(m.downsample[1], w[f'{p}/gn_proj/scale'], w[f'{p}/gn_proj/bias'])
+            if verbose: print(f"  ✓ block{block_i}  ({n_units} units)")
+
+        # embedding_proj (Conv 1×1 con bias)
+        load_conv(self.embedding_proj, w['embedding/kernel'])
+        self.embedding_proj.bias.data = trans(w['embedding/bias'])
+        if verbose: print("  ✓ embedding_proj (1024 → 768)")
+
+        # positional embedding: scarta class token → [1, 196, 768]
+        self.position_embedding.data = trans(
+            w['Transformer/posembed_input/pos_embedding']
+        )[:, 1:, :]
+        if verbose: print("  ✓ positional embedding (class token rimosso)")
+
+        # 12 Transformer blocks
+        for i, block in enumerate(self.transformer_blocks):
+            p = f'Transformer/encoderblock_{i}'
+            attn = block.self_attention
+
+            load_ln(block.ln_1, w[f'{p}/LayerNorm_0/scale'], w[f'{p}/LayerNorm_0/bias'])
+            load_ln(block.ln_2, w[f'{p}/LayerNorm_2/scale'], w[f'{p}/LayerNorm_2/bias'])
+
+            for idx, name in enumerate(['query', 'key', 'value']):
+                k = w[f'{p}/MultiHeadDotProductAttention_1/{name}/kernel']  # (768,12,64)
+                b = w[f'{p}/MultiHeadDotProductAttention_1/{name}/bias']  # (12,64)
+                s = idx * 768
+                attn.in_proj_weight.data[s:s + 768] = trans(k.reshape(768, 768)).T
+                attn.in_proj_bias.data[s:s + 768] = trans(b.reshape(-1))
+
+            out_k = w[f'{p}/MultiHeadDotProductAttention_1/out/kernel']  # (12,64,768)
+            attn.out_proj.weight.data = trans(out_k.reshape(768, 768).T)
+            attn.out_proj.bias.data = trans(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
+
+            block.mlp[0].weight.data = trans(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T
+            block.mlp[0].bias.data = trans(w[f'{p}/MlpBlock_3/Dense_0/bias'])
+            block.mlp[3].weight.data = trans(w[f'{p}/MlpBlock_3/Dense_1/kernel']).T
+            block.mlp[3].bias.data = trans(w[f'{p}/MlpBlock_3/Dense_1/bias'])
+
+        if verbose: print("  ✓ Transformer blocks (12 blocchi)")
+
+        # LayerNorm finale
+        load_ln(self.norm, w['Transformer/encoder_norm/scale'], w['Transformer/encoder_norm/bias'])
+        if verbose: print("  ✓ encoder_norm")
+
+        if verbose:
+            total = sum(p.numel() for p in self.parameters())
+            print(f"{'─' * 55}")
+            print(f"  Parametri totali: {total:,}")
+            print(f"  ✓ Checkpoint caricato con successo!\n")
+
+        return self
+#------------------------------------------------------
+# Decoder
 class CUPBlock(nn.Module):
     """
         Cascaded Upsampler Block per TransUNet Decoder.
@@ -423,7 +657,7 @@ class CUP(nn.Module):
         self.layer1 = CUPBlock(in_channels=in_channels, out_channels=512)
         self.layer2 = CUPBlock(in_channels=1024, out_channels=256)
         self.layer3 = CUPBlock(in_channels=512, out_channels=128)
-        self.layer4 = CUPBlock(in_channels=128+64, out_channels=64)
+        self.layer4 = CUPBlock(in_channels=128 + 64, out_channels=64)
 
     def forward(self, x: torch.Tensor, skip_cnn: list[torch.Tensor]) -> torch.Tensor:
         """
@@ -454,6 +688,8 @@ class SegmentationHead(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         return x
+
+
 # versione pretrained
 class PT_TransUNet(nn.Module):
     def __init__(self, img_size: int = 224, embed_dim: int = 768):
@@ -472,13 +708,15 @@ class PT_TransUNet(nn.Module):
         x = self.head(x)
         return x
 
+
 # versione non pretrained
 class NPT_TransUNet(nn.Module):
     def __init__(self, img_size: int = 224, embed_dim: int = 768):
         super().__init__()
         self.encoder = Encoder(img_size=img_size)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
-        self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),nn.ReLU(inplace=True))
+        self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),
+                                        nn.ReLU(inplace=True))
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -489,6 +727,33 @@ class NPT_TransUNet(nn.Module):
         x = self.head(x)
         return x
 
+
+# versione con il checkpoint pre trained
+class CheckpointNet(nn.Module):
+    """
+        TransUNet con encoder dal checkpoint R50+ViT-B_16.npz.
+
+        Uso:
+            model = CPT_TransUNet(npz_path="PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+
+        Fine-tuning (congela encoder, allena solo decoder + head):
+            for p in model.encoder.parameters():
+                p.requires_grad = False
+        """
+
+    def __init__(self, npz_path: str, img_size: int = 224, embed_dim: int = 768):
+        super().__init__()
+        self.encoder = CheckpointEncoder(img_size=img_size, embed_dim=embed_dim).load_npz(npz_path)
+        self.decoder = CUP(in_channels=embed_dim, out_channels=64)
+        self.last_layer = nn.Sequential(
+            nn.Conv2d(64, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True)
+        )
+        self.head = SegmentationHead(in_channels=16, n_classes=9)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, skip = self.encoder(x)
+        x = self.decoder(reshape(x), skip)
+        return self.head(self.last_layer(x))
 
 
 def test_resnet50_encoder():
