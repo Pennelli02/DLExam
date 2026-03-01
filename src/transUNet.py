@@ -7,7 +7,39 @@ from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 from torchvision.transforms import v2
 
-from src.utils import load_conv, load_gn, load_ln, trans
+# helper
+def trans(arr: np.ndarray) -> torch.Tensor:
+    """Transpose a numpy array
+        Prende un array NumPy e lo converte in un tensore PyTorch float32.
+    """
+    return torch.tensor(np.array(arr), dtype=torch.float32)
+
+def load_conv(m: nn.Conv2d, kernel: np.ndarray):
+    """JAX (H,W,In,Out) → PyTorch (Out,In,H,W)."""
+    m.weight.data = trans(kernel).permute(3,2,0,1)
+
+def load_gn(m: nn.GroupNorm, scale: np.ndarray, bias: np.ndarray):
+    """
+    Carica i parametri di un GroupNorm da un checkpoint JAX nel modulo PyTorch.
+
+    Il .npz salva scale e bias in formato JAX con shape (1, 1, 1, C),
+    pensati per il broadcasting su tensori NHWC (channel-last).
+    PyTorch invece si aspetta vettori piatti (C,) per GroupNorm.
+    Il .reshape(-1) appiattisce qualsiasi shape in un vettore 1D.
+    """
+    m.weight.data = trans(scale).reshape(-1)
+    m.bias.data = trans(bias).reshape(-1)
+
+def load_ln(m: nn.LayerNorm, scale: np.ndarray, bias: np.ndarray):
+    """
+    Carica i parametri di un LayerNorm da un checkpoint JAX nel modulo PyTorch.
+
+    A differenza di GroupNorm, i parametri LayerNorm nel .npz sono già
+    salvati come vettori piatti (C,), quindi non serve il reshape.
+    Basta convertire da NumPy a tensore PyTorch con trans().
+    """
+    m.weight.data = trans(scale)
+    m.bias.data = trans(bias)
 
 
 #---------------------------------------------------------------
@@ -585,6 +617,16 @@ class CheckpointEncoder(nn.Module):
             load_ln(block.ln_2, w[f'{p}/LayerNorm_2/scale'], w[f'{p}/LayerNorm_2/bias'])
 
             for idx, name in enumerate(['query', 'key', 'value']):
+                # Il .npz salva Q, K, V come tensori SEPARATI con shape (768, 12, 64)
+                # PyTorch nn.MultiheadAttention li vuole UNIFICATI in in_proj_weight
+                # di shape (3*768, 768) = (2304, 768), nell'ordine Q, K, V.
+                #
+                # Per ogni proiezione (Q=idx=0, K=idx=1, V=idx=2):
+                #   kernel: (768, 12, 64) → reshape(768,768) → .T → slice [s:s+768]
+                #   bias:   (12, 64)      → reshape(-1)       →     slice [s:s+768]
+                #
+                # s = idx * 768 è l'offset nel vettore unificato:
+                #   Q occupa [0:768], K occupa [768:1536], V occupa [1536:2304]
                 k = w[f'{p}/MultiHeadDotProductAttention_1/{name}/kernel']  # (768,12,64)
                 b = w[f'{p}/MultiHeadDotProductAttention_1/{name}/bias']  # (12,64)
                 s = idx * 768

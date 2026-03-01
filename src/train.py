@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from src.transUNet import PT_TransUNet, NPT_TransUNet, CheckpointNet
+from src.transUNet import NPT_TransUNet, CheckpointNet, PT_TransUNet
 from src.dataset import SynapseDataset, get_train_transform
 from src.utils import test_single_volume
 
@@ -391,7 +391,7 @@ def main(opts):
     input_data = torch.randn(opts.batch, 1, opts.image_size, opts.image_size)
     if opts.pre_trained:
         if opts.checkpoint_net:
-            model= CheckpointNet()
+            model= CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
         else:
             model = PT_TransUNet()
     else:
