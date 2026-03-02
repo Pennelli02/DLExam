@@ -249,5 +249,9 @@ da valutare: *tale modello pretrained utilizza la group norm e non la classica b
 uso del checkpoint non sembra migliorare come funziona il modello poi a fine training valuterò.
 
 - valutare se pesi caricati correttamente (ho sbagliato sicuramente a caricare i pesi)
+
+L'errore sembra essere che dato che sto usando un modello di Big Transfer devo attuare delle pre trasformazioni per far si che il transfer learning funzioni
 ## Quinto training
 deludente: Dice: 0.6113 | HD95: 47.48
+
+

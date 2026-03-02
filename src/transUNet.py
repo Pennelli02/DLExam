@@ -7,8 +7,11 @@ from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 from torchvision.transforms import v2
 
+import torch.nn.functional as F
+
+
 # helper
-def trans(arr: np.ndarray) -> torch.Tensor:
+def np2th(arr: np.ndarray) -> torch.Tensor:
     """Transpose a numpy array
         Prende un array NumPy e lo converte in un tensore PyTorch float32.
     """
@@ -16,7 +19,7 @@ def trans(arr: np.ndarray) -> torch.Tensor:
 
 def load_conv(m: nn.Conv2d, kernel: np.ndarray):
     """JAX (H,W,In,Out) → PyTorch (Out,In,H,W)."""
-    m.weight.data = trans(kernel).permute(3,2,0,1)
+    m.weight.data = np2th(kernel).permute(3, 2, 0, 1)
 
 def load_gn(m: nn.GroupNorm, scale: np.ndarray, bias: np.ndarray):
     """
@@ -27,8 +30,8 @@ def load_gn(m: nn.GroupNorm, scale: np.ndarray, bias: np.ndarray):
     PyTorch invece si aspetta vettori piatti (C,) per GroupNorm.
     Il .reshape(-1) appiattisce qualsiasi shape in un vettore 1D.
     """
-    m.weight.data = trans(scale).reshape(-1)
-    m.bias.data = trans(bias).reshape(-1)
+    m.weight.data = np2th(scale).reshape(-1)
+    m.bias.data = np2th(bias).reshape(-1)
 
 def load_ln(m: nn.LayerNorm, scale: np.ndarray, bias: np.ndarray):
     """
@@ -38,8 +41,8 @@ def load_ln(m: nn.LayerNorm, scale: np.ndarray, bias: np.ndarray):
     salvati come vettori piatti (C,), quindi non serve il reshape.
     Basta convertire da NumPy a tensore PyTorch con trans().
     """
-    m.weight.data = trans(scale)
-    m.bias.data = trans(bias)
+    m.weight.data = np2th(scale)
+    m.bias.data = np2th(bias)
 
 
 #---------------------------------------------------------------
@@ -419,6 +422,28 @@ class PT_Encoder(nn.Module):
 # ------------------------------------------------
 # models from directory PreTrainedModels
 
+# Dato che stiamo utilizzando modelli BiG Transfer vanno implementate delle accortezze per permettere il fine tuning
+# seguito il paper
+
+class StdConv2d(nn.Conv2d):
+
+    def forward(self, x):
+        w = self.weight
+        v, m = torch.var_mean(w, dim=[1, 2, 3], keepdim=True, unbiased=False)
+        w = (w - m) / torch.sqrt(v + 1e-5)
+        return F.conv2d(x, w, self.bias, self.stride, self.padding,
+                        self.dilation, self.groups)
+
+
+def conv3x3(cin, cout, stride=1, groups=1, bias=False):
+    return StdConv2d(cin, cout, kernel_size=3, stride=stride,
+                     padding=1, bias=bias, groups=groups)
+
+
+def conv1x1(cin, cout, stride=1, bias=False):
+    return StdConv2d(cin, cout, kernel_size=1, stride=stride,
+                     padding=0, bias=bias)
+
 #blocchi con group norm
 class BottleneckGN(nn.Module):
     """
@@ -599,13 +624,11 @@ class CheckpointEncoder(nn.Module):
 
         # embedding_proj (Conv 1×1 con bias)
         load_conv(self.embedding_proj, w['embedding/kernel'])
-        self.embedding_proj.bias.data = trans(w['embedding/bias'])
+        self.embedding_proj.bias.data = np2th(w['embedding/bias'])
         if verbose: print("  ✓ embedding_proj (1024 → 768)")
 
         # positional embedding: scarta class token → [1, 196, 768]
-        self.position_embedding.data = trans(
-            w['Transformer/posembed_input/pos_embedding']
-        )[:, 1:, :]
+        self.position_embedding.data = np2th(w['Transformer/posembed_input/pos_embedding'])[:, 1:, :]
         if verbose: print("  ✓ positional embedding (class token rimosso)")
 
         # 12 Transformer blocks
@@ -630,17 +653,17 @@ class CheckpointEncoder(nn.Module):
                 k = w[f'{p}/MultiHeadDotProductAttention_1/{name}/kernel']  # (768,12,64)
                 b = w[f'{p}/MultiHeadDotProductAttention_1/{name}/bias']  # (12,64)
                 s = idx * 768
-                attn.in_proj_weight.data[s:s + 768] = trans(k.reshape(768, 768)).T
-                attn.in_proj_bias.data[s:s + 768] = trans(b.reshape(-1))
+                attn.in_proj_weight.data[s:s + 768] = np2th(k.reshape(768, 768)).T
+                attn.in_proj_bias.data[s:s + 768] = np2th(b.reshape(-1))
 
             out_k = w[f'{p}/MultiHeadDotProductAttention_1/out/kernel']  # (12,64,768)
-            attn.out_proj.weight.data = trans(out_k.reshape(768, 768).T)
-            attn.out_proj.bias.data = trans(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
+            attn.out_proj.weight.data = np2th(out_k.reshape(768, 768).T)
+            attn.out_proj.bias.data = np2th(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
 
-            block.mlp[0].weight.data = trans(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T
-            block.mlp[0].bias.data = trans(w[f'{p}/MlpBlock_3/Dense_0/bias'])
-            block.mlp[3].weight.data = trans(w[f'{p}/MlpBlock_3/Dense_1/kernel']).T
-            block.mlp[3].bias.data = trans(w[f'{p}/MlpBlock_3/Dense_1/bias'])
+            block.mlp[0].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T
+            block.mlp[0].bias.data = np2th(w[f'{p}/MlpBlock_3/Dense_0/bias'])
+            block.mlp[3].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_1/kernel']).T
+            block.mlp[3].bias.data = np2th(w[f'{p}/MlpBlock_3/Dense_1/bias'])
 
         if verbose: print("  ✓ Transformer blocks (12 blocchi)")
 

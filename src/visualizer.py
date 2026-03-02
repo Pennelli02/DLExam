@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -291,5 +293,18 @@ def npz_summary(npz_path: str, max_depth: int = 3) -> None:
     print(f"│  {'TOTALE PARAMETRI':>40}   {total:>42,} │")
     print("└" + "─" * 88 + "┘\n")
 
+
+def load_local_weights(path):
+    """
+    Carica i pesi da un file .npz locale.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Il file non è stato trovato nel percorso: {path}")
+
+    # load con allow_pickle=False è la best practice per file di pesi
+    return np.load(path, allow_pickle=False)
+
 if __name__ == "__main__":
     npz_summary("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+    weights=load_local_weights("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+    print(weights)
