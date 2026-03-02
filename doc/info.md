@@ -146,6 +146,9 @@ Flusso Completo del Decoder:
 | CUP Block 3   | 56x56x256     | 56x56x256       | 512       | 112x112x128|
 | CUP Block 4   | 112x112x128   | 112x112x64      | 192       | 224x224x64 |
 
+
+### BatchNorm2d
+osservando nei forum e dagli appunti che dopo una relu e quasi sempre richiesto una batchnorm cosa che nel paper non risulta che nel decoder si usi però verrà implementata lo stesso 
 ### Pre-Processing
 
 Il dataset Synapse contiene 30 scansioni CT volumetriche 3D che richiedono preprocessing per essere utilizzabili nel training di TransUNet.
@@ -241,3 +244,10 @@ seguendo il paper abbiamo recuperato il checkpoint R50+ViT-B_16.npz perché loro
 cartella è : PreTrainedModels\imagenet21k\R50+ViT-B_16.npz
 
 da valutare: *tale modello pretrained utilizza la group norm e non la classica batch norm*
+
+### Possibili soluzioni
+uso del checkpoint non sembra migliorare come funziona il modello poi a fine training valuterò.
+
+- valutare se pesi caricati correttamente (ho sbagliato sicuramente a caricare i pesi)
+## Quinto training
+deludente: Dice: 0.6113 | HD95: 47.48

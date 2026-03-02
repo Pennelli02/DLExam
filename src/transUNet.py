@@ -672,6 +672,7 @@ class CUPBlock(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
+        self.bn1 = nn.BatchNorm2d(out_channels) # è necessaria?? nel paper non risulta presente Best practice
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
@@ -679,6 +680,7 @@ class CUPBlock(nn.Module):
             x = torch.cat([x, skip], dim=1)
         x = self.conv1(x)
         x = self.relu(x)
+        x = self.bn1(x)
         x = self.upsample(x)
         return x
 
