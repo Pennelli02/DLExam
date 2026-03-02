@@ -689,7 +689,8 @@ class CUPBlock(nn.Module):
         1. (Opzionale) Concatena con skip connection
         2. Conv 3x3 per fondere le feature
         3. ReLU
-        4. Upsample 2x (bilinear interpolation)
+        4. BatchNorm2d
+        5. Upsample 2x (bilinear interpolation)
         """
 
     def __init__(self, in_channels: int, out_channels: int):
