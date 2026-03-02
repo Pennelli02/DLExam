@@ -454,11 +454,11 @@ class BottleneckGN(nn.Module):
                  num_groups: int = 32):
         super().__init__()
         out_ch     = mid_ch * 4
-        self.conv1 = nn.Conv2d(in_ch,  mid_ch, kernel_size=1, bias=False)
+        self.conv1 = conv1x1(in_ch, mid_ch)
         self.gn1   = nn.GroupNorm(num_groups, mid_ch)
-        self.conv2 = nn.Conv2d(mid_ch, mid_ch, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv2 = conv3x3(mid_ch, mid_ch, stride=stride, bias=False)
         self.gn2   = nn.GroupNorm(num_groups, mid_ch)
-        self.conv3 = nn.Conv2d(mid_ch, out_ch, kernel_size=1, bias=False)
+        self.conv3 = conv1x1(mid_ch, out_ch, bias=False)
         self.gn3   = nn.GroupNorm(num_groups, out_ch)
         self.relu       = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -473,8 +473,9 @@ class BottleneckGN(nn.Module):
 
 def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int) -> nn.Sequential:
     out_ch     = mid_ch * 4
+    # Projection also with pre-activation according to paper.
     downsample = nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, bias=False),
+        conv1x1(in_ch, out_ch, stride=stride, bias=False),
         nn.GroupNorm(32, out_ch)
     )
     blocks = [BottleneckGN(in_ch, mid_ch, stride=stride, downsample=downsample)]
@@ -535,7 +536,7 @@ class CheckpointEncoder(nn.Module):
         super().__init__()
 
         # ResNet50-GN
-        self.conv1   = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1   = StdConv2d(3,64 , kernel_size=7, stride=2, padding=3, bias=False)
         self.gn_root = nn.GroupNorm(32, 64)
         self.relu    = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -602,7 +603,7 @@ class CheckpointEncoder(nn.Module):
         # conv_root + gn_root
         load_conv(self.conv1, w['conv_root/kernel'])
         load_gn(self.gn_root, w['gn_root/scale'], w['gn_root/bias'])
-        if verbose: print("  ✓ conv_root + gn_root")
+        if verbose: print("  conv_root + gn_root")
 
         # blocchi ResNet
         for block_i, (layer, n_units) in enumerate(
@@ -620,16 +621,16 @@ class CheckpointEncoder(nn.Module):
                 if m.downsample is not None:
                     load_conv(m.downsample[0], w[f'{p}/conv_proj/kernel'])
                     load_gn(m.downsample[1], w[f'{p}/gn_proj/scale'], w[f'{p}/gn_proj/bias'])
-            if verbose: print(f"  ✓ block{block_i}  ({n_units} units)")
+            if verbose: print(f"  block{block_i}  ({n_units} units)")
 
         # embedding_proj (Conv 1×1 con bias)
         load_conv(self.embedding_proj, w['embedding/kernel'])
         self.embedding_proj.bias.data = np2th(w['embedding/bias'])
-        if verbose: print("  ✓ embedding_proj (1024 → 768)")
+        if verbose: print("  embedding_proj (1024 → 768)")
 
         # positional embedding: scarta class token → [1, 196, 768]
         self.position_embedding.data = np2th(w['Transformer/posembed_input/pos_embedding'])[:, 1:, :]
-        if verbose: print("  ✓ positional embedding (class token rimosso)")
+        if verbose: print("  positional embedding (class token rimosso)")
 
         # 12 Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
@@ -665,17 +666,17 @@ class CheckpointEncoder(nn.Module):
             block.mlp[3].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_1/kernel']).T
             block.mlp[3].bias.data = np2th(w[f'{p}/MlpBlock_3/Dense_1/bias'])
 
-        if verbose: print("  ✓ Transformer blocks (12 blocchi)")
+        if verbose: print("  Transformer blocks (12 blocchi)")
 
         # LayerNorm finale
         load_ln(self.norm, w['Transformer/encoder_norm/scale'], w['Transformer/encoder_norm/bias'])
-        if verbose: print("  ✓ encoder_norm")
+        if verbose: print("  encoder_norm")
 
         if verbose:
             total = sum(p.numel() for p in self.parameters())
             print(f"{'─' * 55}")
             print(f"  Parametri totali: {total:,}")
-            print(f"  ✓ Checkpoint caricato con successo!\n")
+            print(f"  Checkpoint caricato con successo!\n")
 
         return self
 #------------------------------------------------------
