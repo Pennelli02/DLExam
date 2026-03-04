@@ -476,7 +476,7 @@ def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int) -> nn.Se
     # Projection also with pre-activation according to paper.
     downsample = nn.Sequential(
         conv1x1(in_ch, out_ch, stride=stride, bias=False),
-        nn.GroupNorm(32, out_ch)
+        nn.GroupNorm(out_ch, out_ch)
     )
     blocks = [BottleneckGN(in_ch, mid_ch, stride=stride, downsample=downsample)]
     for _ in range(1, n_blocks):
@@ -700,13 +700,23 @@ class CUPBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(out_channels) # è necessaria?? nel paper non risulta presente Best practice
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
-    def forward(self, x: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, skip: torch.Tensor = None, debug: bool = False, block_name: str = "") -> torch.Tensor:
         if skip is not None:
+            if debug:
+                print(f"  [{block_name}] x prima cat: {x.shape}  skip: {skip.shape}")
             x = torch.cat([x, skip], dim=1)
+            if debug:
+                print(f"  [{block_name}] dopo cat:    {x.shape}")
+        else:
+            if debug:
+                print(f"  [{block_name}] x (no skip): {x.shape}")
+
         x = self.conv1(x)
         x = self.relu(x)
         x = self.bn1(x)
         x = self.upsample(x)
+        if debug:
+            print(f"  [{block_name}] output:      {x.shape}")
         return x
 
 
@@ -728,7 +738,7 @@ class CUP(nn.Module):
         self.layer3 = CUPBlock(in_channels=512, out_channels=128)
         self.layer4 = CUPBlock(in_channels=128 + 64, out_channels=64)
 
-    def forward(self, x: torch.Tensor, skip_cnn: list[torch.Tensor]) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, skip_cnn: list[torch.Tensor], debug: bool = False) -> torch.Tensor:
         """
          Cascaded Upsampler (CUP) - Decoder di TransUNet (esattamente come nel paper).
 
@@ -742,10 +752,19 @@ class CUP(nn.Module):
                 :param skip_cnn [1/2, 1/4, 1/8]:
                 :return: x
         """
-        x = self.layer1(x)
-        x = self.layer2(x, skip_cnn[2])
-        x = self.layer3(x, skip_cnn[1])
-        x = self.layer4(x, skip_cnn[0])
+        if debug:
+            print(f"\n[CUP DEBUG]")
+            print(f"  input:       {x.shape}")
+            for i, s in enumerate(skip_cnn):
+                print(f"  skip_cnn[{i}]: {s.shape}")
+            print()
+        x = self.layer1(x, skip=None, debug=debug, block_name="layer1")
+        x = self.layer2(x, skip=skip_cnn[2], debug=debug, block_name="layer2")
+        x = self.layer3(x, skip=skip_cnn[1], debug=debug, block_name="layer3")
+        x = self.layer4(x, skip=skip_cnn[0], debug=debug, block_name="layer4")
+
+        if debug:
+            print(f"\n  output finale: {x.shape}\n")
         return x
 
 
@@ -1160,3 +1179,9 @@ def run_all_tests():
 if __name__ == "__main__":
     with torch.no_grad():
         run_all_tests()
+
+    model= resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+    print(model)
+
+    model=CheckpointEncoder()
+    print(model)

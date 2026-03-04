@@ -80,7 +80,7 @@ class SynapseDataset(Dataset):
             image, label = data['image'][:], data['label'][:]
 
         # CONVERSIONE IN TENSORI PYTORCH
-
+        #print(f"DEBUG - Max: {image.max()}, Min: {image.min()}")
         # 1. .astype(np.float32) → converte in float32 (richiesto da PyTorch)
         # 2. torch.from_numpy() → converte NumPy array in tensore PyTorch
         # 3. .unsqueeze(0) → aggiunge dimensione canale → [1, H, W]

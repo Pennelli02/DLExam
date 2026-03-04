@@ -254,4 +254,30 @@ L'errore sembra essere che dato che sto usando un modello di Big Transfer devo a
 ## Quinto training
 deludente: Dice: 0.6113 | HD95: 47.48
 
+## Sesto training
+Dice: 0.71 HD95: 34
 
+focus su organi:
+                    ==============================================             
+                    ==============                                             
+           INFO      RISULTATI VALIDAZIONE                         train.py:174
+           INFO     ============================================== train.py:175
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8187 | HD95: 12.26  train.py:180
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.4297 | HD95: 28.92  train.py:180
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7903 | HD95: 74.93  train.py:180
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7039 | HD95: 46.11  train.py:180
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9273 | HD95: 35.76  train.py:180
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.4884 | HD95: 17.05  train.py:180
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8424 | HD95: 48.95  train.py:180
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.6811 | HD95: 15.83  train.py:180
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7102 | HD95: 34.98  train.py:182
+                    mm 
