@@ -84,50 +84,56 @@ def load_checkpoint(model, optimizer, scheduler, opts, epoch=None, checkpoint_pa
 
     return checkpoint
 
-
+#Dice Loss layer --> softlayer paper V-net
 class DiceLoss(nn.Module):
-    """
-    Dice Loss multi-classe ottimizzata.
-    Basata sul paper TransUNet ma con implementazione vettorizzata.
-    """
-
-    def __init__(self, n_classes: int = 9, smooth: float = 1e-5):
+    def __init__(self, n_classes: int):
         super().__init__()
         self.n_classes = n_classes
-        self.smooth = smooth
 
-    def forward(self, logits: torch.Tensor, target: torch.Tensor, softmax: bool = True) -> torch.Tensor:
-        """
-        Args:
-            logits: [B, C, H, W] - output del modello
-            target: [B, H, W] - ground truth (valori 0-8)
-            softmax: applica softmax ai logits
+    def _one_hot_encoder(self, input_tensor):
+        # Crea one-hot con loop per classe: più leggibile dell'F.one_hot
+        tensor_list = []
+        for i in range(self.n_classes):
+            # Maschera binaria per la classe i: True dove label==i
+            temp_prob = (input_tensor == i)
+            tensor_list.append(temp_prob.unsqueeze(1))
+        # Concatena lungo la dimensione delle classi: [B, C, H, W]
+        return torch.cat(tensor_list, dim=1).float()
 
-        Returns:
-            loss: Dice loss mediato su tutte le classi
-        """
+    def _dice_loss(self, score, target):
+        # score e target sono [B, H, W] - una classe alla volta
+        target = target.float()
+        smooth = 1e-5
+        # Somma su tutti gli elementi del batch: scalare
+        intersect = torch.sum(score * target)
+        # Denominatore con quadrati (versione paper)
+        y_sum = torch.sum(target * target)
+        z_sum = torch.sum(score * score)
+        loss = (2 * intersect + smooth) / (z_sum + y_sum + smooth)
+        return 1 - loss
+
+    def forward(self, inputs, target, weight=None, softmax=False):
         if softmax:
-            probs = F.softmax(logits, dim=1)  # [B, C, H, W]
-        else:
-            probs = logits
+            # Converti logit in probabilità lungo la dimensione classi
+            inputs = torch.softmax(inputs, dim=1)
 
         # One-hot encoding del target: [B, H, W] -> [B, C, H, W]
-        target_one_hot = F.one_hot(target.long(), num_classes=self.n_classes)  # [B, H, W, C]
-        target_one_hot = target_one_hot.permute(0, 3, 1, 2).float()  # [B, C, H, W]
+        target = self._one_hot_encoder(target)
 
-        # Flatten spaziale per ogni classe
-        probs_flat = probs.contiguous().view(probs.size(0), self.n_classes, -1)  # [B, C, H*W]
-        target_flat = target_one_hot.contiguous().view(target_one_hot.size(0), self.n_classes, -1)  # [B, C, H*W]
+        # Pesi uniformi se non specificati
+        if weight is None:
+            weight = [1] * self.n_classes
 
-        # Calcolo Dice per classe (vettorizzato)
-        intersection = (probs_flat * target_flat).sum(dim=2)  # [B, C]
-        union = probs_flat.sum(dim=2) + target_flat.sum(dim=2)  # [B, C]
+        assert inputs.size() == target.size()
 
-        dice_per_class = (2. * intersection + self.smooth) / (union + self.smooth)  # [B, C]
-        dice_loss = 1 - dice_per_class  # [B, C]
+        loss = 0.0
+        for i in range(0, self.n_classes):
+            # Calcola Dice loss per la classe i su tutto il batch
+            dice = self._dice_loss(inputs[:, i], target[:, i])
+            loss += dice * weight[i]
 
-        # Media su batch e classi
-        return dice_loss.mean()
+        # Media su tutte le classi
+        return loss / self.n_classes
 
 # LOGICA DI VALIDAZIONE (Chiamata nel Training Loop)
 def validate_model(model, valid_loader, opts):

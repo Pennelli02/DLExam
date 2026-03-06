@@ -140,7 +140,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         print(f" No files found in {raw_data_dir}")
         return
 
-    print(f"✓ Found {len(image_list)} volumes")
+    print(f" Found {len(image_list)} volumes")
 
     # ========== MAPPING CORRETTO ==========
     # Synapse original -> TransUNet standard
@@ -303,31 +303,53 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
 #     # Se il fegato è la classe 5 nel training, deve esserlo anche nel test
 #     print("\n" + "=" * 50)
 
+# def calculate_metric_percase2(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
+#         """
+#         Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
+#         """
+#         # Convertiamo in binario (0 sfondo, 1 qualsiasi organo)
+#         pred = (pred > 0).astype(float)
+#         gt = (gt > 0).astype(float)
+#
+#         # Caso 1: Entrambi hanno l'organo (Situazione standard)
+#         if pred.sum() > 0 and gt.sum() > 0:
+#             dice = metric.binary.dc(pred, gt)
+#             hd95 = metric.binary.hd95(pred, gt)
+#             return dice, hd95
+#
+#         # Caso 2: Il modello trova un organo che non esiste (Falso Positivo)
+#         # Il Dice è 0, la distanza HD95 non è definibile (spesso si mette un valore alto di default)
+#         if pred.sum() > 0 and gt.sum() == 0:
+#             return 0.0, 100.0  # 100mm è una penalità standard
+#
+#         # Caso 3: L'organo esiste ma il modello non vede nulla (Falso Negativo)
+#         if pred.sum() == 0 and gt.sum() > 0:
+#             return 0.0, 100.0
+#
+#         # Caso 4: Entrambi vuoti (Il modello ha predetto correttamente lo sfondo)
+#         return 1.0, 0.0
+
 def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
-        """
-        Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
-        """
-        # Convertiamo in binario (0 sfondo, 1 qualsiasi organo)
-        pred = (pred > 0).astype(float)
-        gt = (gt > 0).astype(float)
+    """
+    Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
+    """
+    # Convertiamo in binario (0 sfondo, 1 qualsiasi organo)
+    pred = (pred > 0).astype(bool)
+    gt = (gt > 0).astype(bool)
 
-        # Caso 1: Entrambi hanno l'organo (Situazione standard)
-        if pred.sum() > 0 and gt.sum() > 0:
-            dice = metric.binary.dc(pred, gt)
-            hd95 = metric.binary.hd95(pred, gt)
-            return dice, hd95
+    # Caso 1: Entrambi hanno l'organo (Situazione standard)
+    if pred.sum() > 0 and gt.sum() > 0:
+        dice = metric.binary.dc(pred, gt)
+        hd95 = metric.binary.hd95(pred, gt)
+        return dice, hd95
 
-        # Caso 2: Il modello trova un organo che non esiste (Falso Positivo)
-        # Il Dice è 0, la distanza HD95 non è definibile (spesso si mette un valore alto di default)
-        if pred.sum() > 0 and gt.sum() == 0:
-            return 0.0, 100.0  # 100mm è una penalità standard
+    # Caso 2: Il modello trova un organo che non esiste (Falso Positivo)
+    if pred.sum() > 0 and gt.sum() == 0:
+        return 1, 0
 
-        # Caso 3: L'organo esiste ma il modello non vede nulla (Falso Negativo)
-        if pred.sum() == 0 and gt.sum() > 0:
-            return 0.0, 100.0
-
-        # Caso 4: Entrambi vuoti (Il modello ha predetto correttamente lo sfondo)
-        return 1.0, 0.0
+    # Caso 3: L'organo esiste ma il modello non vede nulla (Falso Negativo)
+    # oppure Caso 4: Entrambi vuoti
+    return 0, 0
 
 
 def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, test_mode=False ,z_spacing=1):
@@ -381,7 +403,7 @@ def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_s
     print(f"\nGROUND TRUTH:")
     print(f"  -> Classi presenti: {unique_labels}")
     if max(unique_labels) > classes:
-        print(f"  [!] ERRORE: Trovate label ({max(unique_labels)}) superiori al num_classes configurato!")
+        print(f"   ERRORE: Trovate label ({max(unique_labels)}) superiori al num_classes configurato!")
     print(f"{'=' * 40}\n")
 
     # Se dopo lo squeeze image è ancora 4D (raro ma possibile), forziamo:

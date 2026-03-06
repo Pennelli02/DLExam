@@ -317,10 +317,6 @@ class Encoder(nn.Module):
 class PTResnet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.normalizer = v2.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
         backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         self.fs = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)  #1/2
         self.maxpool = backbone.maxpool
@@ -342,7 +338,6 @@ class PTResnet(nn.Module):
             # .expand è meglio di .repeat: non copia i dati in memoria, crea solo viste
             # -1 indica a PyTorch di mantenere la dimensione esistente su quell'asse
             x = x.expand(-1, 3, -1, -1)
-        x = self.normalizer(x)
 
         x = self.fs(x)
         x1 = x
@@ -360,7 +355,7 @@ class PreTrainedVit(nn.Module):
         # 1. Carichiamo il modello ViT-Base ufficiale di PyTorch con pesi ImageNet
         # Usiamo ViT-B/16 perché ha embed_dim=768 e 12 layer, proprio come TransUNet
         super().__init__()
-        weights = ViT_B_16_Weights.IMAGENET1K_V1
+        weights = ViT_B_16_Weights.IMAGENET1K_V1.DEFAULT
         vit_base = vit_b_16(weights=weights)
 
         # 2. Embedding e Positional Embedding
@@ -501,9 +496,9 @@ class TransformerBlockNpz(nn.Module):
         self.mlp  = nn.Sequential(
             nn.Linear(embed_dim, mlp_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
+            nn.Dropout(p=0.1),
             nn.Linear(mlp_dim, embed_dim),
-            nn.Dropout(dropout),
+            nn.Dropout(p=0.1),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -551,7 +546,7 @@ class CheckpointEncoder(nn.Module):
         #  positional embedding [1, 196, embed_dim]
         num_patches             = (img_size // 16) ** 2          # 196
         self.position_embedding = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
-        self.dropout            = nn.Dropout(0.0)
+        self.dropout            = nn.Dropout(0.1) # paper Vit Table 3
 
         # 12 blocchi Transformer
         self.transformer_blocks = nn.ModuleList([
@@ -566,7 +561,9 @@ class CheckpointEncoder(nn.Module):
         if x.shape[1] == 1:  x = x.expand(-1, 3, -1, -1)   # grayscale → 3ch
 
         # CNN
-        x  = self.relu(self.gn_root(self.conv1(x)))
+        x  = self.conv1(x)
+        x = self.gn_root(x)
+        x = self.relu(x)
         x1 = x                                               # skip [B, 64,  112, 112]
         x  = self.maxpool(x)
         x  = self.layer1(x)
@@ -698,6 +695,10 @@ class CUPBlock(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.bn1 = nn.BatchNorm2d(out_channels) # è necessaria?? nel paper non risulta presente Best practice
+        # test per vedere se migliorano le prestazioni
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.bn2 = nn.BatchNorm2d(out_channels)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor = None, debug: bool = False, block_name: str = "") -> torch.Tensor:
@@ -714,6 +715,9 @@ class CUPBlock(nn.Module):
         x = self.conv1(x)
         x = self.relu(x)
         x = self.bn1(x)
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.bn2(x)
         x = self.upsample(x)
         if debug:
             print(f"  [{block_name}] output:      {x.shape}")
@@ -785,7 +789,7 @@ class PT_TransUNet(nn.Module):
         self.encoder = PT_Encoder(img_size=img_size)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=16, kernel_size=3, padding=1),
-                                        nn.ReLU(inplace=True))
+                                        nn.ReLU(inplace=True), nn.BatchNorm2d(16))
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -824,17 +828,14 @@ class CheckpointNet(nn.Module):
         Uso:
             model = CPT_TransUNet(npz_path="PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
 
-        Fine-tuning (congela encoder, allena solo decoder + head):
-            for p in model.encoder.parameters():
-                p.requires_grad = False
-        """
+"""
 
     def __init__(self, npz_path: str, img_size: int = 224, embed_dim: int = 768):
         super().__init__()
         self.encoder = CheckpointEncoder(img_size=img_size, embed_dim=embed_dim).load_npz(npz_path)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(
-            nn.Conv2d(64, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True)
+            nn.Conv2d(64, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True), nn.BatchNorm2d(16)
         )
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
@@ -1177,11 +1178,22 @@ def run_all_tests():
 
 # ESEGUI TUTTI I TEST
 if __name__ == "__main__":
-    with torch.no_grad():
-        run_all_tests()
+    #with torch.no_grad():
+    #   run_all_tests()
 
-    model= resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+    #model= resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+    #print(model)
+
+
+    #model=CheckpointEncoder()
+    #print(model)
+
+    #model=CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+    #print(model)
+
+    model=PT_TransUNet()
     print(model)
 
-    model=CheckpointEncoder()
-    print(model)
+    weights = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1
+    vit = vit_b_16(weights=weights)
+    print(vit)

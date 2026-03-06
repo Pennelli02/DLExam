@@ -281,3 +281,33 @@ focus su organi:
                     mm                                                         
            INFO     MEDIA TOTALE    -> Dice: 0.7102 | HD95: 34.98  train.py:182
                     mm 
+
+# Visualizzazione e Explainability
+Valutare se usare GRAD-CAM per Segmentation
+
+
+           INFO      RISULTATI VALIDAZIONE                         train.py:180
+           INFO     ============================================== train.py:181
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8288 | HD95: 18.66  train.py:186
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.5326 | HD95: 49.89  train.py:186
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7667 | HD95: 53.64  train.py:186
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7202 | HD95: 38.66  train.py:186
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9430 | HD95: 27.70  train.py:186
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.5986 | HD95: 11.74  train.py:186
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8605 | HD95: 45.82  train.py:186
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7856 | HD95: 27.80  train.py:186
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7545 | HD95: 34.24  train.py:188
+                    mm
+
+
+INFO     MEDIA TOTALE    -> Dice: 0.7436 | HD95: 32.32  train.py:188
+                    mm
