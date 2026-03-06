@@ -1,3 +1,5 @@
+from operator import is_not
+
 import numpy as np
 import torch
 import torchvision
@@ -496,9 +498,9 @@ class TransformerBlockNpz(nn.Module):
         self.mlp  = nn.Sequential(
             nn.Linear(embed_dim, mlp_dim),
             nn.GELU(),
-            nn.Dropout(p=0.1),
+            nn.Dropout(dropout),
             nn.Linear(mlp_dim, embed_dim),
-            nn.Dropout(p=0.1),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -701,7 +703,7 @@ class CUPBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
-    def forward(self, x: torch.Tensor, skip: torch.Tensor = None, debug: bool = False, block_name: str = "") -> torch.Tensor:
+    def forward(self, x: torch.Tensor, skip: torch.Tensor = None, debug: bool = False, first_block: bool=None, block_name: str = "") -> torch.Tensor:
         if skip is not None:
             if debug:
                 print(f"  [{block_name}] x prima cat: {x.shape}  skip: {skip.shape}")
@@ -715,9 +717,11 @@ class CUPBlock(nn.Module):
         x = self.conv1(x)
         x = self.relu(x)
         x = self.bn1(x)
-        x = self.conv2(x)
-        x = self.relu2(x)
-        x = self.bn2(x)
+        #print(x.shape)
+        if first_block is None:
+            x = self.conv2(x)
+            x = self.relu2(x)
+            x = self.bn2(x)
         x = self.upsample(x)
         if debug:
             print(f"  [{block_name}] output:      {x.shape}")
@@ -762,7 +766,7 @@ class CUP(nn.Module):
             for i, s in enumerate(skip_cnn):
                 print(f"  skip_cnn[{i}]: {s.shape}")
             print()
-        x = self.layer1(x, skip=None, debug=debug, block_name="layer1")
+        x = self.layer1(x, skip=None, debug=debug, first_block =True ,block_name="layer1")
         x = self.layer2(x, skip=skip_cnn[2], debug=debug, block_name="layer2")
         x = self.layer3(x, skip=skip_cnn[1], debug=debug, block_name="layer3")
         x = self.layer4(x, skip=skip_cnn[0], debug=debug, block_name="layer4")
@@ -842,7 +846,11 @@ class CheckpointNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x, skip = self.encoder(x)
         x = self.decoder(reshape(x), skip)
-        return self.head(self.last_layer(x))
+        x = self.last_layer(x)
+        #print(x.shape)
+        x=self.head(x)
+        #print(x.shape)
+        return x
 
 
 def test_resnet50_encoder():
@@ -1188,8 +1196,8 @@ if __name__ == "__main__":
     #model=CheckpointEncoder()
     #print(model)
 
-    #model=CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
-    #print(model)
+    model=CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+    print(model)
 
     model=PT_TransUNet()
     print(model)
