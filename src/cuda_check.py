@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+
 print("PyTorch loaded from:", torch.__file__)
 print("NumPy loaded from:", np.__file__)
 print("CUDA available:", torch.cuda.is_available())

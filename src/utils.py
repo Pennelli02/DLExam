@@ -587,6 +587,167 @@ def inspect_h5_file(filepath):
     except Exception as e:
         print(f"Errore durante l'apertura del file: {e}")
 
+def test_single_volume(image, label, net, classes, patch_size=[224, 224], test_save_path=None, case=None, test_mode=False ,z_spacing=1):
+    """
+        Esegue l'inferenza slice-by-slice su un volume 3D usando un modello 2D
+        e calcola le metriche per ogni classe.
+        Replicando il protocollo di Zhou et al. e Yu et al.
+
+        Args:
+            image (Tensor): volume di input [1, Z, H, W]
+            label (Tensor): ground truth [1, Z, H, W]
+            net (nn.Module): modello di segmentazione 2D
+            classes (int): numero totale di classi (incluso background)
+            patch_size (tuple): dimensione di input richiesta dal modello
+            test_save_path (str): path per il salvataggio dei risultati (.nii.gz)
+            case (str): identificativo del paziente
+            z_spacing (float): spacing assiale (mm)
+        """
+    # Spostiamo i dati su CPU e li convertiamo in NumPy
+    # Il loader ti dà [1, 147, 512, 512] -> B, C, H, W
+    # Ma per noi C sono le fette (Z).
+    # Rimuoviamo la dimensione batch: [1, Z, H, W] -> [Z, H, W]
+    # Questo facilita il loop slice-by-slice
+
+    image = image.squeeze(0).cpu().detach().numpy()
+    label = label.squeeze(0).cpu().detach().numpy()
+
+    # ================== BLOCCO DEBUG INPUT ==================
+    print(f"\n{'=' * 40}")
+    print(f"DEBUG DATA RANGE - Caso: {case}")
+    print(f"{'=' * 40}")
+
+    # Statistiche Immagine
+    img_min, img_max = image.min(), image.max()
+    print(f"INPUT IMAGE:")
+    print(f"  -> Range: [{img_min:.2f}, {img_max:.2f}]")
+    print(f"  -> Media: {image.mean():.2f} | Std: {image.std():.2f}")
+
+    # Diagnosi Automatica
+    if img_min < -500:
+        print("\n[!] DIAGNOSI: Valori in Hounsfield Units (HU) rilevati.")
+        print("    Il modello si aspetta dati clippati e normalizzati (es. [0, 1]).")
+        print("    AZIONE: Applica np.clip(image, -125, 275) e poi normalizza.")
+    elif img_min >= 0 and img_max <= 1:
+        print("\n[v] DIAGNOSI: Dati nel range [0, 1]. Corretto.")
+    else:
+        print("\n[?] DIAGNOSI: Range inusuale. Verifica il pre-processing del training.")
+
+    # Verifica Ground Truth
+    unique_labels = np.unique(label)
+    print(f"\nGROUND TRUTH:")
+    print(f"  -> Classi presenti: {unique_labels}")
+    if max(unique_labels) > classes:
+        print(f"   ERRORE: Trovate label ({max(unique_labels)}) superiori al num_classes configurato!")
+    print(f"{'=' * 40}\n")
+
+    # Se dopo lo squeeze image è ancora 4D (raro ma possibile), forziamo:
+    if image.ndim == 4:
+        image = image[0]
+
+    # Inizializziamo il volume delle predizioni
+    # Stessa shape della label per facilitare il confronto voxel-wise
+
+    prediction = np.zeros_like(label)
+
+    #Definizione delle trasformazioni (torchvision v2)
+
+    resize_input = v2.Resize(
+        size=patch_size,
+        interpolation=InterpolationMode.BICUBIC,
+        antialias=True
+    )
+
+    resize_output = v2.Resize(
+        size=label.shape[1:],  # dimensioni originali (H, W)
+        interpolation=InterpolationMode.NEAREST
+    )
+
+    net.eval()
+
+    # Recuperiamo il device del modello
+    device = next(net.parameters()).device
+
+    with torch.inference_mode():
+        # Loop su ogni slice assiale
+        for z in range(image.shape[0]):
+            # Estrazione della singola fetta 2D
+            slice_2d = image[z, :, :]
+            x, y = slice_2d.shape[0], slice_2d.shape[1]
+
+            # Conversione in tensore PyTorch [H, W] -> [1, H, W]
+            slice_tensor = torch.from_numpy(slice_2d).float().unsqueeze(0)
+
+            # Resize dell'input SOLO se necessario
+            if x != patch_size[0] or y != patch_size[1]:
+                slice_resized = resize_input(slice_tensor)
+            else:
+                slice_resized = slice_tensor
+
+            # Aggiungi dimensione batch: [1, H, W] -> [1, 1, H, W]
+            input_tensor = slice_resized.unsqueeze(0).to(device)
+
+            # Inferenza
+            outputs = net(input_tensor)
+
+            # Softmax + Argmax (come nel paper originale)
+            out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
+
+            # Resize della predizione alle dimensioni originali SOLO se necessario
+            if x != patch_size[0] or y != patch_size[1]:
+                out_resized = resize_output(out.unsqueeze(0)).squeeze(0)
+            else:
+                out_resized = out
+
+            # Salviamo la slice nel volume finale
+            prediction[z] = out_resized.cpu().numpy()
+
+            # Libera memoria GPU
+            del input_tensor, outputs, out, out_resized
+
+        # Calcolo metriche per ogni classe (si salta la classe 0 = background)
+
+    metric_list = []
+    # Si salta la classe 0 (background)
+    for cls in range(1, classes):
+        metric_list.append(
+            calculate_metric_percase(
+                prediction == cls,
+                label == cls
+            )
+        )
+
+    #Salvataggio opzionale dei risultati in formato NIfTI
+    #     SimpleITK usa l'ordine:
+    #     - array:  [Z, Y, X]
+    #     - spacing:(X, Y, Z)
+
+    if test_save_path is not None and test_mode:
+        # Crea directory se non esiste
+        os.makedirs(test_save_path, exist_ok=True)
+
+        # # ======== VERIFICA VALORI PRIMA DI SALVARE ========
+        # print(f"\n[DEBUG {case}] Verifica valori pre-salvataggio:")
+        # print(f"  Prediction shape: {prediction.shape}")
+        # print(f"  Prediction dtype: {prediction.dtype}")
+        # print(f"  Prediction unique values: {np.unique(prediction)}")
+        # print(f"  Prediction min/max: {prediction.min():.2f} / {prediction.max():.2f}")
+
+        img_itk = sitk.GetImageFromArray(image.astype(np.float32))
+        prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
+        lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
+
+        # Imposta spacing (in mm)
+        img_itk.SetSpacing((1.0, 1.0, z_spacing))
+        prd_itk.SetSpacing((1.0, 1.0, z_spacing))
+        lab_itk.SetSpacing((1.0, 1.0, z_spacing))
+
+        # Salva file NIfTI
+        sitk.WriteImage(prd_itk, f"{test_save_path}/{case}_pred.nii.gz")
+        sitk.WriteImage(img_itk, f"{test_save_path}/{case}_img.nii.gz")
+        sitk.WriteImage(lab_itk, f"{test_save_path}/{case}_gt.nii.gz")
+
+    return metric_list
 
 def inspect_label_distribution(h5_file_path):
     """Verifica quali classi sono presenti in un file di validation"""
@@ -625,6 +786,78 @@ def inspect_label_distribution(h5_file_path):
 
     return unique
 
+def test_single_volumeSy(image, label, net, classes, patch_size=[224, 224],
+                          test_save_path=None, case=None, test_mode=False, z_spacing=1):
+    """
+    Inferenza slice-by-slice con scipy.ndimage.zoom per resize.
+
+    Differenza rispetto a test_single_volume:
+        - Input resize:  scipy.zoom(slice, ..., order=3)  invece di v2.Resize BICUBIC
+        - Output resize: scipy.zoom(pred,  ..., order=0)  invece di v2.Resize NEAREST
+    """
+    from scipy.ndimage import zoom
+
+    image = image.squeeze(0).cpu().detach().numpy()
+    label = label.squeeze(0).cpu().detach().numpy()
+
+    if image.ndim == 4:
+        image = image[0]
+
+    prediction = np.zeros_like(label)
+    device = next(net.parameters()).device
+    net.eval()
+
+    with torch.inference_mode():
+        for z in range(image.shape[0]):
+            slice_2d = image[z, :, :]
+            x, y = slice_2d.shape[0], slice_2d.shape[1]
+
+            # Resize input con scipy spline cubica (order=3)
+            if x != patch_size[0] or y != patch_size[1]:
+                slice_2d = zoom(slice_2d, (patch_size[0] / x, patch_size[1] / y), order=3)
+
+            # [H, W] → [1, 1, H, W]
+            input_tensor = torch.from_numpy(slice_2d).float().unsqueeze(0).unsqueeze(0).to(device)
+
+            outputs = net(input_tensor)
+            out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
+            out = out.cpu().numpy()
+
+            # Resize output con scipy nearest neighbor (order=0)
+            if x != patch_size[0] or y != patch_size[1]:
+                pred = zoom(out, (x / patch_size[0], y / patch_size[1]), order=0)
+            else:
+                pred = out
+
+            prediction[z] = pred
+            del input_tensor, outputs
+
+    metric_list = []
+    for cls in range(1, classes):
+        metric_list.append(
+            calculate_metric_percase(
+                prediction == cls,
+                label == cls
+            )
+        )
+
+    if test_save_path is not None and test_mode:
+        os.makedirs(test_save_path, exist_ok=True)
+
+        img_itk = sitk.GetImageFromArray(image.astype(np.float32))
+        prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
+        lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
+
+        img_itk.SetSpacing((1.0, 1.0, z_spacing))
+        prd_itk.SetSpacing((1.0, 1.0, z_spacing))
+        lab_itk.SetSpacing((1.0, 1.0, z_spacing))
+
+        sitk.WriteImage(prd_itk, f"{test_save_path}/{case}_pred.nii.gz")
+        sitk.WriteImage(img_itk, f"{test_save_path}/{case}_img.nii.gz")
+        sitk.WriteImage(lab_itk, f"{test_save_path}/{case}_gt.nii.gz")
+
+    return metric_list
+
 if __name__ == "__main__":
     inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
     mock_test()
@@ -643,3 +876,5 @@ if __name__ == "__main__":
     #     # VERIFICA: Right Kidney (classe 4) dovrebbe essere presente
     #     if 4 not in classes_present:
     #         print(f"️  WARNING: Right Kidney (class 4) NOT FOUND in {h5_file.name}!")
+
+

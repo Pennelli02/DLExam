@@ -1,4 +1,5 @@
 import os
+import random
 from types import SimpleNamespace
 import argparse
 import logging
@@ -11,12 +12,11 @@ import torch
 from torch import nn
 from torch.amp import GradScaler, autocast
 import torch.nn.functional as F
-from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from src.transUNet import NPT_TransUNet, CheckpointNet, PT_TransUNet
 from src.dataset import SynapseDataset, get_train_transform
-from src.utils import test_single_volume
+from src.utils import test_single_volume, test_single_volumeSy
 
 
 def get_logger():
@@ -32,14 +32,14 @@ LOG = get_logger()
 
 def save_checkpoint(model, optimizer, scheduler, epoch, loss, global_step ,opts):
     fname = os.path.join(opts.checkpoint_dir, f'e_{epoch:05d}.chp')
-    info = {
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(), # Salviamo lo stato dello scheduler
-        'epoch': epoch,
-        'loss': loss,
-        'global_step': global_step
-    }
+    info = dict(
+        model_state_dict=model.state_dict(),
+        optimizer_state_dict= optimizer.state_dict(),
+        scheduler_state_dict=scheduler.state_dict(), # Salviamo lo stato dello scheduler
+        epoch= epoch,
+        loss= loss,
+        global_step= global_step
+    )
     torch.save(info, fname)
     LOG.info(f'Saved checkpoint {fname}')
 
@@ -83,6 +83,15 @@ def load_checkpoint(model, optimizer, scheduler, opts, epoch=None, checkpoint_pa
     LOG.info(f" Checkpoint caricato! (Epoca: {loaded_epoch})")
 
     return checkpoint
+
+def set_seed(seed=1234):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 #Dice Loss layer --> softlayer paper V-net
 class DiceLoss(nn.Module):
@@ -138,56 +147,54 @@ class DiceLoss(nn.Module):
 # LOGICA DI VALIDAZIONE (Chiamata nel Training Loop)
 def validate_model(model, valid_loader, opts):
     """
-    Validazione volumetrica con metriche dettagliate per-organo
+    Validazione volumetrica con metriche dettagliate per-organo.
+    Esegue doppia validazione: v2.Resize e scipy.zoom per confronto.
     """
     model.eval()
-    performance_buffer = []
 
-    # Nomi degli organi secondo il paper TransUNet
     organ_names = [
         "Aorta", "Gallbladder", "Left Kidney", "Right Kidney",
         "Liver", "Pancreas", "Spleen", "Stomach"
     ]
 
-    LOG.info(" Validazione volumetrica avviata...")
+    results = {}
 
-    with torch.no_grad():  # per risparmiare memoria
-        for i_batch, sampled_batch in enumerate(valid_loader):
-            image = sampled_batch['image']
-            label = sampled_batch['label']
-            case_name = sampled_batch['case_name'][0]
+    for resize_type, inference_fn in [("v2", test_single_volume), ("scipy", test_single_volumeSy)]:
+        LOG.info(f" Validazione volumetrica avviata (resize_type='{resize_type}')...")
+        performance_buffer = []
 
-            case_metrics = test_single_volume(
-                image, label, model,
-                classes=opts.n_classes, test_mode=True, test_save_path=opts.save_dir, case=case_name
-            )
-            performance_buffer.append(case_metrics)
+        with torch.no_grad():
+            for i_batch, sampled_batch in enumerate(valid_loader):
+                image = sampled_batch['image']
+                label = sampled_batch['label']
+                case_name = sampled_batch['case_name'][0]
 
-            LOG.info(f" {case_name} processato")
+                case_metrics = inference_fn(
+                    image, label, model,
+                    classes=opts.n_classes,
+                    test_mode=True,
+                    test_save_path=opts.save_dir,
+                    case=case_name
+                )
+                performance_buffer.append(case_metrics)
+                LOG.info(f" {case_name} processato")
 
-    # [Num_Pazienti, Num_Organi, 2]
-    performance_buffer = np.array(performance_buffer)
+        performance_buffer = np.array(performance_buffer)
+        mean_per_organ = np.mean(performance_buffer, axis=0)
+        avg_dice = np.mean(mean_per_organ[:, 0])
+        avg_hd95 = np.mean(mean_per_organ[:, 1])
 
-    # Media per organo
-    mean_per_organ = np.mean(performance_buffer, axis=0)
+        LOG.info("\n" + "=" * 60)
+        LOG.info(f" RISULTATI VALIDAZIONE (resize_type='{resize_type}')")
+        LOG.info("=" * 60)
+        for i, organ in enumerate(organ_names):
+            LOG.info(f"{organ:15s} -> Dice: {mean_per_organ[i, 0]:.4f} | HD95: {mean_per_organ[i, 1]:.2f} mm")
+        LOG.info(f"{'MEDIA TOTALE':15s} -> Dice: {avg_dice:.4f} | HD95: {avg_hd95:.2f} mm")
 
-    # Statistiche globali
-    avg_dice = np.mean(mean_per_organ[:, 0])
-    avg_hd95 = np.mean(mean_per_organ[:, 1])
+        results[resize_type] = (avg_dice, avg_hd95, mean_per_organ)
 
-    # Log dettagliato per-organo
-    LOG.info("\n" + "=" * 60)
-    LOG.info(" RISULTATI VALIDAZIONE")
-    LOG.info("=" * 60)
-
-    for i, organ in enumerate(organ_names):
-        dice = mean_per_organ[i, 0]
-        hd95 = mean_per_organ[i, 1]
-        LOG.info(f"{organ:15s} -> Dice: {dice:.4f} | HD95: {hd95:.2f} mm")
-
-    LOG.info(f"{'MEDIA TOTALE':15s} -> Dice: {avg_dice:.4f} | HD95: {avg_hd95:.2f} mm")
-
-    return avg_dice, avg_hd95, mean_per_organ
+    # Ritorna i risultati v2 come prima (compatibilità con train_loop)
+    return results["v2"]
 
 
 def train_loop(model, train, valid, opts):
@@ -219,6 +226,7 @@ def train_loop(model, train, valid, opts):
 
     # Poly LR Scheduler
     max_iterations = len(train) * opts.n_epoch_sy
+    print(max_iterations)
     poly_lr_lambda = lambda iteration: (1.0 - iteration / max_iterations) ** 0.9
     scheduler = LambdaLR(optimizer, lr_lambda=poly_lr_lambda)
 
@@ -249,7 +257,7 @@ def train_loop(model, train, valid, opts):
     # -----------------------------
     # CUDNN benchmark
     # -----------------------------
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
     LOG.info(f" Training da epoca {start_epoch} a {opts.n_epoch_sy} | Step: {step}")
 
@@ -284,7 +292,7 @@ def train_loop(model, train, valid, opts):
                 LOG.error(f" ERRORE: Label fuori range! Valori: {unique_labels.cpu().numpy()}")
                 raise ValueError("Label fuori range nel dataset!")
 
-            optimizer.zero_grad(set_to_none=True)
+            optimizer.zero_grad()
 
             # ===== Forward + Loss =====
             with autocast(device_type='cuda'):
@@ -439,6 +447,8 @@ if __name__ == '__main__':
 
     # Crea checkpoint directory
     os.makedirs(opts.checkpoint_dir, exist_ok=True)
+
+    set_seed()
 
     with launch_ipdb_on_exception():
         main(opts)

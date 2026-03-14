@@ -185,14 +185,12 @@ def save_and_display_segmentation(data_path, output_dir="outputs"):
 
     return im_path, lb_path
 
-def npz_summary(npz_path: str, max_depth: int = 3) -> None:
+def npz_summary(npz_path: str, max_depth: int = 5) -> None:
     """
     Stampa la struttura del file .npz in stile torchinfo:
     gerarchia indentata con layer name, shape e conteggio parametri.
-
-    :param npz_path:  path del file .npz
-    :param max_depth: livelli di indentazione gerarchica (default 3)
     """
+
     w     = dict(np.load(npz_path, allow_pickle=False))
     keys  = sorted(w.keys())
     total = sum(v.size for v in w.values())
@@ -202,91 +200,118 @@ def npz_summary(npz_path: str, max_depth: int = 3) -> None:
     print("┌" + "─" * 88 + "┐")
     print(f"│  {'NPZ SUMMARY':^86}│")
     print(f"│  File : {npz_path:<77}│")
-    print(f"│  Layer: {len(keys):<10}  Parametri totali: {total:<52,}│")
+    print(f"│  Chiavi: {len(keys):<9}  Parametri totali: {total:<52,}│")
     print("├" + "─" * 42 + "┬" + "─" * 28 + "┬" + "─" * 16 + "┤")
     print(f"│  {'Layer name':<40}│ {'Shape':<27}│ {'Params':>14} │")
     print("├" + "─" * 42 + "┼" + "─" * 28 + "┼" + "─" * 16 + "┤")
 
-    # ── costruisci albero ────────────────────────────────────────────────────
-    # nodo = {"_keys": [...], "children": {name: nodo}}
+    # ── costruzione albero ───────────────────────────────────────────────────
+    # Ogni nodo ha:
+    #   "_leaves": lista di chiavi complete che appartengono a questo nodo
+    #   "children": dizionario {nome: nodo_figlio}
     def _new_node():
-        return {"_keys": [], "children": {}}
+        return {"_leaves": [], "children": {}}
 
     root = _new_node()
     for k in keys:
+        # Splitta la chiave gerarchica: "Transformer/block_0/Dense/kernel"
+        # -> ["Transformer", "block_0", "Dense", "kernel"]
         parts = k.split("/")
         node  = root
+        # Naviga/crea i nodi intermedi (tutti tranne l'ultimo che è il nome del tensore)
         for part in parts[:-1]:
             node["children"].setdefault(part, _new_node())
             node = node["children"][part]
-        node["_keys"].append(k)
+        # L'ultimo elemento è il tensore foglia: lo aggiungiamo al nodo corrente
+        node["_leaves"].append(k)
 
-    # ── stampa ricorsiva ─────────────────────────────────────────────────────
-    def _params_in_node(node) -> int:
-        total = sum(w[k].size for k in node["_keys"])
+    # ── conteggio parametri ricorsivo ────────────────────────────────────────
+    def _count_params(node) -> int:
+        # Somma i parametri delle foglie dirette
+        total = sum(w[k].size for k in node["_leaves"])
+        # Ricorre nei figli
         for child in node["children"].values():
-            total += _params_in_node(child)
+            total += _count_params(child)
         return total
 
-    def _print_node(node, prefix: str, depth: int, is_last: bool):
+    # ── stampa riga tensore foglia ────────────────────────────────────────────
+    def _print_leaf(key: str, prefix: str, is_last: bool) -> None:
+        # Prende solo il nome finale della chiave (dopo l'ultimo "/")
+        name      = key.split("/")[-1]
+        connector = "└─ " if is_last else "├─ "
+        row_name  = (prefix + connector + name)[:40]
+        shape_str = str(w[key].shape)
+        params    = w[key].size
+        print(f"│  {row_name:<40}│ {shape_str:<27}│ {params:>14,} │")
+
+    # ── stampa nodo ricorsivo ─────────────────────────────────────────────────
+    def _print_node(node: dict, prefix: str, depth: int) -> None:
+        # Se abbiamo superato la profondità massima, non stampiamo nulla
         if depth > max_depth:
             return
 
-        connector = "└─ " if is_last else "├─ "
-        child_names = list(node["children"].keys())
+        leaves   = node["_leaves"]
+        children = list(node["children"].items())  # lista di (nome, nodo)
 
-        # Stampa i tensori foglia di questo nodo
-        for ki, k in enumerate(node["_keys"]):
-            leaf_last = (ki == len(node["_keys"]) - 1) and not child_names
-            lc = "└─ " if leaf_last else "├─ "
-            leaf_name = k.split("/")[-1]
-            shape_str = str(w[k].shape)
-            params    = w[k].size
-            row_name  = (prefix + lc + leaf_name)[:40]
-            print(f"│  {row_name:<40}│ {shape_str:<27}│ {params:>14,} │")
+        # Calcola quanti elementi totali ha questo nodo (foglie + figli)
+        # per determinare correttamente quale è l'ultimo
+        all_items = leaves + [name for name, _ in children]
+        n_items   = len(all_items)
 
-        # Stampa i nodi figli
-        for ci, cname in enumerate(child_names):
-            clast     = ci == len(child_names) - 1
-            cnode     = node["children"][cname]
-            cparams   = _params_in_node(cnode)
-            n_tensors = sum(1 for _ in _iter_leaves(cnode))
-            indent    = prefix + ("   " if is_last else "│  ")
+        # Stampa prima le foglie dirette di questo nodo
+        for i, key in enumerate(leaves):
+            # È l'ultimo elemento solo se non ci sono figli dopo
+            is_last = (i == len(leaves) - 1) and len(children) == 0
+            _print_leaf(key, prefix, is_last)
 
-            # riga sezione
-            sec_label = (indent + ("└─ " if clast else "├─ ") + cname)[:40]
-            sec_info  = f"[{n_tensors} tensori]"
-            print(f"│  {sec_label:<40}│ {sec_info:<27}│ {cparams:>14,} │")
+        # Poi stampa i nodi figli
+        for i, (name, child_node) in enumerate(children):
+            is_last   = (i == len(children) - 1)
+            connector = "└─ " if is_last else "├─ "
 
-            # ricorre nei figli
-            _print_node(cnode,
-                        indent + ("   " if clast else "│  "),
-                        depth + 1,
-                        clast)
+            # Calcola statistiche del sottoalbero figlio
+            child_params = _count_params(child_node)
+            n_leaves     = sum(1 for _ in _iter_leaves(child_node))
 
+            # Riga di intestazione del nodo figlio
+            sec_label = (prefix + connector + name)[:40]
+            sec_info  = f"[{n_leaves} tensori]"
+            print(f"│  {sec_label:<40}│ {sec_info:<27}│ {child_params:>14,} │")
+
+            # Calcola il nuovo prefisso per i figli di questo nodo:
+            # se è l'ultimo figlio usiamo "   " (spazio), altrimenti "│  " (barra)
+            new_prefix = prefix + ("   " if is_last else "│  ")
+
+            # Ricorre nel figlio solo se non abbiamo superato max_depth
+            _print_node(child_node, new_prefix, depth + 1)
+
+    # ── iteratore foglie ─────────────────────────────────────────────────────
     def _iter_leaves(node):
-        yield from node["_keys"]
+        # Genera tutte le chiavi foglia nel sottoalbero
+        yield from node["_leaves"]
         for child in node["children"].values():
             yield from _iter_leaves(child)
 
-    # Stampa i top-level
-    top_keys   = list(root["_keys"])
-    top_childs = list(root["children"].keys())
+    # ── stampa root ───────────────────────────────────────────────────────────
+    # Le foglie dirette della root (chiavi senza "/" nel nome)
+    for i, key in enumerate(root["_leaves"]):
+        is_last = (i == len(root["_leaves"]) - 1) and not root["children"]
+        _print_leaf(key, "", is_last)
 
-    for k in top_keys:
-        shape_str = str(w[k].shape)
-        params    = w[k].size
-        print(f"│  {'├─ ' + k:<40}│ {shape_str:<27}│ {params:>14,} │")
+    # I figli top-level della root
+    top_children = list(root["children"].items())
+    for i, (name, child_node) in enumerate(top_children):
+        is_last      = (i == len(top_children) - 1)
+        connector    = "└─ " if is_last else "├─ "
+        child_params = _count_params(child_node)
+        n_leaves     = sum(1 for _ in _iter_leaves(child_node))
 
-    for ci, cname in enumerate(top_childs):
-        clast  = ci == len(top_childs) - 1
-        cnode  = root["children"][cname]
-        cp     = _params_in_node(cnode)
-        ntens  = sum(1 for _ in _iter_leaves(cnode))
-        lc     = "└─ " if clast else "├─ "
-        sec_label = (lc + cname)[:40]
-        print(f"│  {sec_label:<40}│ {'[' + str(ntens) + ' tensori]':<27}│ {cp:>14,} │")
-        _print_node(cnode, "   " if clast else "│  ", 2, clast)
+        sec_label = (connector + name)[:40]
+        sec_info  = f"[{n_leaves} tensori]"
+        print(f"│  {sec_label:<40}│ {sec_info:<27}│ {child_params:>14,} │")
+
+        new_prefix = "   " if is_last else "│  "
+        _print_node(child_node, new_prefix, depth=2)
 
     # ── footer ────────────────────────────────────────────────────────────────
     print("├" + "─" * 42 + "┴" + "─" * 28 + "┴" + "─" * 16 + "┤")
@@ -306,5 +331,6 @@ def load_local_weights(path):
 
 if __name__ == "__main__":
     npz_summary("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
-    weights=load_local_weights("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
-    print(weights)
+
+    #weights=load_local_weights("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+    #print(weights)

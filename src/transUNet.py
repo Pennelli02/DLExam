@@ -1,13 +1,12 @@
-from operator import is_not
+
 
 import numpy as np
 import torch
 import torchvision
 from torch import nn
-from torchvision import models
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import vit_b_16, ViT_B_16_Weights
-from torchvision.transforms import v2
+
 
 import torch.nn.functional as F
 
@@ -46,11 +45,6 @@ def load_ln(m: nn.LayerNorm, scale: np.ndarray, bias: np.ndarray):
     m.weight.data = np2th(scale)
     m.bias.data = np2th(bias)
 
-
-#---------------------------------------------------------------
-# Qui saranno presenti i modelli in versione no pre trained
-# RESNET50
-
 def reshape(x: torch.Tensor) -> torch.Tensor:
     """
     Trasforma la sequenza di token del Transformer in una mappa di feature 2D
@@ -80,6 +74,9 @@ def reshape(x: torch.Tensor) -> torch.Tensor:
     x = x.permute(0, 3, 1, 2).contiguous()
 
     return x
+#---------------------------------------------------------------
+# Qui saranno presenti i modelli in versione no pre trained
+# RESNET50
 
 
 class Bottleneck(nn.Module):
@@ -654,10 +651,13 @@ class CheckpointEncoder(nn.Module):
                 b = w[f'{p}/MultiHeadDotProductAttention_1/{name}/bias']  # (12,64)
                 s = idx * 768
                 attn.in_proj_weight.data[s:s + 768] = np2th(k.reshape(768, 768)).T
+                #print(attn.in_proj_weight.data[s:s + 768].shape)
                 attn.in_proj_bias.data[s:s + 768] = np2th(b.reshape(-1))
+                #print(attn.in_proj_bias.data[s:s + 768].shape)
 
             out_k = w[f'{p}/MultiHeadDotProductAttention_1/out/kernel']  # (12,64,768)
             attn.out_proj.weight.data = np2th(out_k.reshape(768, 768).T)
+            #print(attn.out_proj.weight.data.shape)
             attn.out_proj.bias.data = np2th(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
 
             block.mlp[0].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T
@@ -694,6 +694,7 @@ class CUPBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
+        # l'uso del doppio layer convoluzionale è stato rispreso dal pytorch segmentation models che presenta le versioni aggiornate dei modelli di segmentazione
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.bn1 = nn.BatchNorm2d(out_channels) # è necessaria?? nel paper non risulta presente Best practice
@@ -714,14 +715,16 @@ class CUPBlock(nn.Module):
             if debug:
                 print(f"  [{block_name}] x (no skip): {x.shape}")
 
+        # invertito l'ordine
         x = self.conv1(x)
-        x = self.relu(x)
         x = self.bn1(x)
+        x = self.relu(x)
+
         #print(x.shape)
         if first_block is None:
             x = self.conv2(x)
-            x = self.relu2(x)
             x = self.bn2(x)
+            x = self.relu2(x)
         x = self.upsample(x)
         if debug:
             print(f"  [{block_name}] output:      {x.shape}")
@@ -766,10 +769,10 @@ class CUP(nn.Module):
             for i, s in enumerate(skip_cnn):
                 print(f"  skip_cnn[{i}]: {s.shape}")
             print()
-        x = self.layer1(x, skip=None, debug=debug, first_block =True ,block_name="layer1")
-        x = self.layer2(x, skip=skip_cnn[2], debug=debug, block_name="layer2")
-        x = self.layer3(x, skip=skip_cnn[1], debug=debug, block_name="layer3")
-        x = self.layer4(x, skip=skip_cnn[0], debug=debug, block_name="layer4")
+        x = self.layer1(x, skip=None, debug=debug, first_block =True, block_name="layer1")
+        x = self.layer2(x, skip=skip_cnn[2], debug=debug, first_block =None , block_name="layer2")
+        x = self.layer3(x, skip=skip_cnn[1], debug=debug, first_block =None, block_name="layer3")
+        x = self.layer4(x, skip=skip_cnn[0], debug=debug, first_block =None, block_name="layer4")
 
         if debug:
             print(f"\n  output finale: {x.shape}\n")
@@ -779,12 +782,15 @@ class CUP(nn.Module):
 class SegmentationHead(nn.Module):
     def __init__(self, in_channels: int = 16, n_classes: int = 9):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, n_classes, kernel_size=1)
+        #inizialmente ripreso dalla UNET conv1x1 però osservando le best practice di pytorch segmentation conv3x3
+        self.conv1 = nn.Conv2d(in_channels, n_classes, kernel_size=3, padding=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         return x
 
+#---------------------------------------------
+#complete models
 
 # versione pretrained
 class PT_TransUNet(nn.Module):
@@ -839,20 +845,26 @@ class CheckpointNet(nn.Module):
         self.encoder = CheckpointEncoder(img_size=img_size, embed_dim=embed_dim).load_npz(npz_path)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(
-            nn.Conv2d(64, 16, kernel_size=3, padding=1), nn.ReLU(inplace=True), nn.BatchNorm2d(16)
+            nn.Conv2d(64, 16, kernel_size=3, padding=1),  nn.BatchNorm2d(16), nn.ReLU(inplace=True)
         )
         self.head = SegmentationHead(in_channels=16, n_classes=9)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x, skip = self.encoder(x)
+        #print(x.shape)
+        #print(skip[0].shape)
+        #print(skip[1].shape)
+        #print(skip[2].shape)
         x = self.decoder(reshape(x), skip)
+        #print(x.shape)
         x = self.last_layer(x)
         #print(x.shape)
         x=self.head(x)
         #print(x.shape)
         return x
 
-
+#---------------------------------------------------
+#test
 def test_resnet50_encoder():
     """Test dell'encoder ResNet50 custom (non pretrained)"""
     print("=" * 80)
@@ -1198,10 +1210,3 @@ if __name__ == "__main__":
 
     model=CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
     print(model)
-
-    model=PT_TransUNet()
-    print(model)
-
-    weights = torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1
-    vit = vit_b_16(weights=weights)
-    print(vit)
