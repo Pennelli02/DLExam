@@ -445,15 +445,15 @@ class BottleneckGN(nn.Module):
     """
     def __init__(self, in_ch: int, mid_ch: int,
                  stride: int = 1, downsample: nn.Module = None,
-                 num_groups: int = 32):
+                 num_groups: int = 32, eps: float = 1e-5):
         super().__init__()
         out_ch     = mid_ch * 4
         self.conv1 = conv1x1(in_ch, mid_ch)
-        self.gn1   = nn.GroupNorm(num_groups, mid_ch)
+        self.gn1   = nn.GroupNorm(num_groups, mid_ch, eps=eps)
         self.conv2 = conv3x3(mid_ch, mid_ch, stride=stride, bias=False)
-        self.gn2   = nn.GroupNorm(num_groups, mid_ch)
+        self.gn2   = nn.GroupNorm(num_groups, mid_ch, eps=eps)
         self.conv3 = conv1x1(mid_ch, out_ch, bias=False)
-        self.gn3   = nn.GroupNorm(num_groups, out_ch)
+        self.gn3   = nn.GroupNorm(num_groups, out_ch, eps=eps)
         self.relu       = nn.ReLU(inplace=True)
         self.downsample = downsample
 
@@ -465,7 +465,7 @@ class BottleneckGN(nn.Module):
         return self.relu(out + residual)
 
 
-def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int) -> nn.Sequential:
+def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int, eps:float) -> nn.Sequential:
     out_ch     = mid_ch * 4
     # Projection also with pre-activation according to paper.
     downsample = nn.Sequential(
@@ -474,7 +474,7 @@ def _make_gn_layer(in_ch: int, mid_ch: int, n_blocks: int, stride: int) -> nn.Se
     )
     blocks = [BottleneckGN(in_ch, mid_ch, stride=stride, downsample=downsample)]
     for _ in range(1, n_blocks):
-        blocks.append(BottleneckGN(out_ch, mid_ch))
+        blocks.append(BottleneckGN(out_ch, mid_ch, eps=eps))
     return nn.Sequential(*blocks)
 
 
@@ -486,12 +486,12 @@ class TransformerBlockNpz(nn.Module):
     dei pesi dal file .npz (ln_1, ln_2, self_attention, mlp).
     """
     def __init__(self, embed_dim: int = 768, num_heads: int = 12,
-                 mlp_dim: int = 3072, dropout: float = 0.0):
+                 mlp_dim: int = 3072, dropout: float = 0.0, eps: float = 1e-5):
         super().__init__()
-        self.ln_1           = nn.LayerNorm(embed_dim)
+        self.ln_1           = nn.LayerNorm(embed_dim, eps=eps)
         self.self_attention = nn.MultiheadAttention(embed_dim, num_heads,
                                                     dropout=dropout, batch_first=True)
-        self.ln_2 = nn.LayerNorm(embed_dim)
+        self.ln_2 = nn.LayerNorm(embed_dim, eps=eps)
         self.mlp  = nn.Sequential(
             nn.Linear(embed_dim, mlp_dim),
             nn.GELU(),
@@ -526,18 +526,18 @@ class CheckpointEncoder(nn.Module):
 
     def __init__(self, img_size: int = 224, embed_dim: int = 768,
                  num_heads: int = 12, mlp_dim: int = 3072,
-                 n_transformer_blocks: int = 12):
+                 n_transformer_blocks: int = 12, eps: float = 1e-5):
         super().__init__()
 
         # ResNet50-GN
         self.conv1   = StdConv2d(3,64 , kernel_size=7, stride=2, padding=3, bias=False)
-        self.gn_root = nn.GroupNorm(32, 64)
+        self.gn_root = nn.GroupNorm(32, 64, eps=eps)
         self.relu    = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.layer1 = _make_gn_layer(in_ch=64,  mid_ch=64,  n_blocks=3, stride=1)  # 3 unit
-        self.layer2 = _make_gn_layer(in_ch=256, mid_ch=128, n_blocks=4, stride=2)  # 4 unit
-        self.layer3 = _make_gn_layer(in_ch=512, mid_ch=256, n_blocks=9, stride=2)  # 9 unit ← dal .npz
+        self.layer1 = _make_gn_layer(in_ch=64,  mid_ch=64,  n_blocks=3, stride=1, eps=eps)  # 3 unit
+        self.layer2 = _make_gn_layer(in_ch=256, mid_ch=128, n_blocks=4, stride=2, eps=eps)  # 4 unit
+        self.layer3 = _make_gn_layer(in_ch=512, mid_ch=256, n_blocks=9, stride=2, eps=eps)  # 9 unit ← dal .npz
 
         #  proiezione 1×1: 1024 → embed_dim
         self.embedding_proj = nn.Conv2d(1024, embed_dim, kernel_size=1)
@@ -549,10 +549,10 @@ class CheckpointEncoder(nn.Module):
 
         # 12 blocchi Transformer
         self.transformer_blocks = nn.ModuleList([
-            TransformerBlockNpz(embed_dim, num_heads, mlp_dim)
+            TransformerBlockNpz(embed_dim, num_heads, mlp_dim, eps=eps)
             for _ in range(n_transformer_blocks)
         ])
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(embed_dim, eps=eps)
 
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
@@ -656,8 +656,8 @@ class CheckpointEncoder(nn.Module):
                 #print(attn.in_proj_bias.data[s:s + 768].shape)
 
             out_k = w[f'{p}/MultiHeadDotProductAttention_1/out/kernel']  # (12,64,768)
-            attn.out_proj.weight.data = np2th(out_k.reshape(768, 768).T)
-            #print(attn.out_proj.weight.data.shape)
+            attn.out_proj.weight.data = np2th(out_k.reshape(768, 768)).T
+            print(attn.out_proj.weight.data.shape)
             attn.out_proj.bias.data = np2th(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
 
             block.mlp[0].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T
@@ -840,9 +840,9 @@ class CheckpointNet(nn.Module):
 
 """
 
-    def __init__(self, npz_path: str, img_size: int = 224, embed_dim: int = 768):
+    def __init__(self, npz_path: str, eps: float = 1e-5, img_size: int = 224, embed_dim: int = 768):
         super().__init__()
-        self.encoder = CheckpointEncoder(img_size=img_size, embed_dim=embed_dim).load_npz(npz_path)
+        self.encoder = CheckpointEncoder(img_size=img_size, embed_dim=embed_dim, eps=eps).load_npz(npz_path)
         self.decoder = CUP(in_channels=embed_dim, out_channels=64)
         self.last_layer = nn.Sequential(
             nn.Conv2d(64, 16, kernel_size=3, padding=1),  nn.BatchNorm2d(16), nn.ReLU(inplace=True)

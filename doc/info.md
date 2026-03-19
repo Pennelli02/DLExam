@@ -513,4 +513,58 @@ CheckpointNet con doppio layer convoluzionale
                     mm
 
 
-### checkpoint 2
+### checkpoint test
+
+[18:38:31] INFO      img0038 processato                            train.py:180
+[18:38:32] INFO                                                    train.py:187
+                    ==============================================             
+                    ==============                                             
+           INFO      RISULTATI VALIDAZIONE (resize_type='v2')      train.py:188
+           INFO     ============================================== train.py:189
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8083 | HD95: 8.72   train.py:191
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.5747 | HD95: 11.65  train.py:191
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7893 | HD95: 61.92  train.py:191
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7433 | HD95: 59.30  train.py:191
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9306 | HD95: 35.54  train.py:191
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.5757 | HD95: 11.72  train.py:191
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8356 | HD95: 40.19  train.py:191
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7324 | HD95: 20.02  train.py:191
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7488 | HD95: 31.13  train.py:192
+                    mm                                                         
+           INFO      Validazione volumetrica avviata               train.py:163
+                    (resize_type='scipy')...                                    
+
+                    ==============================================             
+                    ==============                                             
+           INFO      RISULTATI VALIDAZIONE (resize_type='scipy')   train.py:188
+           INFO     ============================================== train.py:189
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8242 | HD95: 8.32   train.py:191
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.5678 | HD95: 10.11  train.py:191
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7994 | HD95: 53.98  train.py:191
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7463 | HD95: 50.10  train.py:191
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9338 | HD95: 35.74  train.py:191
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.5754 | HD95: 13.76  train.py:191
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8411 | HD95: 40.22  train.py:191
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7396 | HD95: 19.79  train.py:191
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7535 | HD95: 29.00  train.py:192
+                    mm                                                         
+[19:56:20] INFO     Saved checkpoint transunet_ckp_test\e_00152.chp train.py:44
+           INFO      End training 

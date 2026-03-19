@@ -1,4 +1,5 @@
 import os
+import random
 
 from pathlib import Path
 
@@ -118,18 +119,32 @@ def get_train_transform(opts):
         # antialias=True: applica anti-aliasing per immagini più smooth
         v2.Resize(size=(opts.image_size, opts.image_size), antialias=True),
 
-        # Ruota casualmente l'immagine tra -20° e +20°
-        v2.RandomRotation(degrees=opts.degrees, expand=False),
-
+        RandomRot90(p=opts.flip_prob),
         # Ribalta orizzontalmente con probabilità 50%
         v2.RandomHorizontalFlip(p=opts.flip_prob),
 
         # Ribalta verticalmente con probabilità 50%
         v2.RandomVerticalFlip(p=opts.flip_prob),
 
+        # Ruota casualmente l'immagine tra -20° e +20°
+        v2.RandomRotation(degrees=opts.degrees, expand=False),
+
         # Converte il tipo di dato in float32 compatibile con tv_tensor
         v2.ToDtype(torch.float32, scale=False),
     ])
+
+class RandomRot90:
+    def __init__(self, p=0.5):
+        self.p = p
+    """Ruota di k×90° casuale, applicata sia a image che a mask."""
+    def __call__(self, sample):
+        if random.random() > self.p:
+            k = np.random.randint(0, 4)
+            # torch.rot90 funziona su tensori, dims=(H,W) = (-2,-1)
+            sample['image'] = torch.rot90(sample['image'], k, dims=[-2, -1])
+            sample['label'] = torch.rot90(sample['label'], k, dims=[-2, -1])
+        return sample
+
 
 # non sono sicuro di questa scelta di creare questa classe
 # class MakeDataloader:
