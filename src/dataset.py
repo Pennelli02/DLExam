@@ -119,6 +119,7 @@ def get_train_transform(opts):
         # antialias=True: applica anti-aliasing per immagini più smooth
         v2.Resize(size=(opts.image_size, opts.image_size), antialias=True),
 
+        # gira l'immagine di 90 180 270 gradi
         RandomRot90(p=opts.flip_prob),
         # Ribalta orizzontalmente con probabilità 50%
         v2.RandomHorizontalFlip(p=opts.flip_prob),
@@ -141,8 +142,14 @@ class RandomRot90:
         if random.random() > self.p:
             k = np.random.randint(0, 4)
             # torch.rot90 funziona su tensori, dims=(H,W) = (-2,-1)
-            sample['image'] = torch.rot90(sample['image'], k, dims=[-2, -1])
-            sample['label'] = torch.rot90(sample['label'], k, dims=[-2, -1])
+            sample['image'] = tv_tensors.wrap(
+                torch.rot90(sample['image'], k, dims=[-2, -1]),
+                like=sample['image']  # mantiene il tipo tv_tensors.Image
+            )
+            sample['label'] = tv_tensors.wrap(
+                torch.rot90(sample['label'], k, dims=[-2, -1]),
+                like=sample['label']  # mantiene il tipo tv_tensors.Mask
+            )
         return sample
 
 
