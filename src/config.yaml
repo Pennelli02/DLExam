@@ -28,9 +28,10 @@ log_every: 25
 batch_window: 50
 save_every: 19 # così otteniamo 8 checkpoint
 checkpoint_dir: 'transunet_ckp_v2'
-validation_frequency: 76 # valida ogni 8 epoche invece di ogni epoca (38 per testare in maniera veloce il modello)
+validation_frequency: 4 # valida ogni 8 epoche invece di ogni epoca (38 per testare in maniera veloce il modello)
 
 save_dir: 'val_images'
 resume: False # impostato così (True) indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]
 
+testing_dir: "transunet_ckp_v2/e_00076.chp" # qui mettiamo il checkpoint che vogliamo testare

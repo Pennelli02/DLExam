@@ -93,46 +93,83 @@ def inference(net, valid_loader, opts, resize_type="scipy"):
 #FIXME NON FUNZIONA IL CARICAMENTO DEI CHECKPOINT PER FARE INFERENZA
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format='[%(asctime)s] %(levelname)-8s %(message)s',
-                        datefmt='%H:%M:%S')
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("config", help='YAML Configuration file')
-    opts = yaml.load(open(parser.parse_args().config), Loader=yaml.Loader)
-    opts = SimpleNamespace(**opts)
-    opts.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
-    model = CheckpointNet(npz_path="PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
-    checkpoint = torch.load("transunet_ckp_v2/e_00152.chp")
-    pretrained_dict = checkpoint['model_state_dict']
-    model.load_state_dict(pretrained_dict)
-    model.to(opts.device)
-
-    # Carica il test loader
-    from dataset import SynapseDataset
-    from torch.utils.data import DataLoader
-
-    test_dataset = SynapseDataset(
-        opts=opts,
-        data_dir=opts.validation_dir,
-        split="test",
-        transform=None
-    )
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=1)
-    model.eval()
-    # Esegui con entrambi i metodi e confronta
-    for resize_type in ["scipy", "v2"]:
-        LOG.info(f"\n{'=' * 60}")
-        LOG.info(f" Run con resize_type='{resize_type}'")
-        LOG.info(f"{'=' * 60}")
-
-        avg_dice, avg_hd95, per_organ = inference(
-            net=model,
-            valid_loader=test_loader,
-            opts=opts,
-            resize_type=resize_type
+        logging.basicConfig(
+            level=logging.INFO,
+            format='[%(asctime)s] %(levelname)-8s %(message)s',
+            datefmt='%H:%M:%S'
         )
 
-        LOG.info(f"\n Dice: {avg_dice:.4f} | HD95: {avg_hd95:.2f} mm")
+        parser = argparse.ArgumentParser()
+        parser.add_argument("config", help='YAML Configuration file')
+        parser.add_argument(
+            "--checkpoint",
+            default=None,
+            help="Path esplicito al checkpoint (opzionale, altrimenti prende l'ultimo)"
+        )
+        args = parser.parse_args()
+
+        opts = yaml.load(open(args.config), Loader=yaml.Loader)
+        opts = SimpleNamespace(**opts)
+        opts.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        # Costruzione modello
+        model = CheckpointNet(npz_path="PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+
+        # Caricamento corretto tramite load_checkpoint
+        # optimizer e scheduler sono None perché siamo in inference, non training
+        checkpoint = load_checkpoint(
+            model=model,
+            optimizer=None,
+            scheduler=None,
+            opts=opts,
+            checkpoint_path=opts.testing_dir  # None = prende l'ultimo automaticamente
+        )
+
+        if checkpoint is None:
+            LOG.error("Nessun checkpoint trovato. Aborting.")
+            exit(1)
+
+        LOG.info(f"Modello caricato dall'epoca {checkpoint['epoch']} "
+                 f"(step {checkpoint.get('global_step', 'N/A')})")
+
+        model.eval()
+
+        # Dataset e loader
+        from dataset import SynapseDataset
+        from torch.utils.data import DataLoader
+
+        test_dataset = SynapseDataset(
+            opts=opts,
+            data_dir=opts.validation_dir,
+            split="test",
+            transform=None
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=4,
+            pin_memory=True  # velocizza trasferimento CPU→GPU
+        )
+
+        # Doppio run scipy vs v2
+        all_results = {}
+        for resize_type in ["scipy", "v2"]:
+            LOG.info(f"\n{'=' * 60}")
+            LOG.info(f" Run con resize_type='{resize_type}'")
+            LOG.info(f"{'=' * 60}")
+
+            avg_dice, avg_hd95, per_organ = inference(
+                net=model,
+                valid_loader=test_loader,
+                opts=opts,
+                resize_type=resize_type
+            )
+            all_results[resize_type] = (avg_dice, avg_hd95)
+
+        # Confronto finale tra i due metodi
+        LOG.info("\n" + "=" * 60)
+        LOG.info(" CONFRONTO FINALE scipy vs v2")
+        LOG.info("=" * 60)
+        for resize_type, (dice, hd95) in all_results.items():
+            LOG.info(f"{resize_type:6s} -> Dice: {dice:.4f} | HD95: {hd95:.2f} mm")

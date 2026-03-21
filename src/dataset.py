@@ -135,9 +135,9 @@ def get_train_transform(opts):
     ])
 
 class RandomRot90:
+    """Ruota di k * 90° casuale, applicata sia a image che a mask."""
     def __init__(self, p=0.5):
         self.p = p
-    """Ruota di k×90° casuale, applicata sia a image che a mask."""
     def __call__(self, sample):
         if random.random() > self.p:
             k = np.random.randint(0, 4)

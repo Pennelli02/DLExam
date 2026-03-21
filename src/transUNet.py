@@ -556,7 +556,7 @@ class CheckpointEncoder(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
-        if x.dim() == 3:     x = x.unsqueeze(0)
+        #if x.dim() == 3:     x = x.unsqueeze(0)
         if x.shape[1] == 1:  x = x.expand(-1, 3, -1, -1)   # grayscale → 3ch
 
         # CNN
@@ -657,7 +657,7 @@ class CheckpointEncoder(nn.Module):
 
             out_k = w[f'{p}/MultiHeadDotProductAttention_1/out/kernel']  # (12,64,768)
             attn.out_proj.weight.data = np2th(out_k.reshape(768, 768)).T
-            print(attn.out_proj.weight.data.shape)
+            #print(attn.out_proj.weight.data.shape)
             attn.out_proj.bias.data = np2th(w[f'{p}/MultiHeadDotProductAttention_1/out/bias'])
 
             block.mlp[0].weight.data = np2th(w[f'{p}/MlpBlock_3/Dense_0/kernel']).T

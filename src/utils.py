@@ -128,7 +128,8 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     output_dir = os.path.join("dataset", "project_transunet")
 
     train_out_dir = os.path.join(output_dir, "train_npz")
-    test_out_dir = os.path.join(output_dir, "validation_vol_h5")
+    val_out_dir = os.path.join(output_dir, "validation_vol_h5")
+    test_out_dir = os.path.join(output_dir, "test_vol_h5")
 
     os.makedirs(train_out_dir, exist_ok=True)
     os.makedirs(test_out_dir, exist_ok=True)
@@ -161,7 +162,11 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         train_ids = [5, 6, 7, 9, 10, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 37, 39, 40]
         train_cases = [f"img{i:04d}" for i in train_ids]
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
-        test_cases = [c for c in all_cases if c not in train_cases]
+        remaining_cases = [c for c in all_cases if c not in train_cases]
+
+        # Primi 6 → validation, ultimi 6 → test
+        val_cases = remaining_cases[:6]
+        test_cases = remaining_cases[6:]
 
     else:
         random.seed(random_seed)
@@ -169,10 +174,16 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         random.shuffle(all_cases)
         n_train = int(len(all_cases) * train_ratio)
         train_cases = all_cases[:n_train]
-        test_cases = all_cases[n_train:]
+        remaining_cases = all_cases[n_train:]
+
+        # Metà → validation, metà → test
+        half = len(remaining_cases) // 2
+        val_cases = remaining_cases[:half]
+        test_cases = remaining_cases[half:]
 
     train_slice_count = 0
     val_volume_count = 0
+    test_volume_count = 0
 
     for img_path in tqdm(image_list, desc="Processing volumes"):
         case_name = os.path.basename(img_path).replace(".nii.gz", "")
@@ -236,25 +247,30 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
                     label=lab_slice.astype(np.uint8)
                 )
                 train_slice_count += 1
-        else:
-            # Salva volume 3D
+        elif case_name in val_cases or case_name in test_cases:
+            # Stesso formato H5 per entrambi — cambia solo la cartella di destinazione
             image_vol = image.transpose(2, 0, 1)
             label_vol = label.transpose(2, 0, 1)
-
             vol_name = f"{case_name}.npy.h5"
-            #print(f"Saving H5 {vol_name} - Range: [{image_vol.min()}, {image_vol.max()}]")
-            with h5py.File(os.path.join(test_out_dir, vol_name), 'w') as f:
+            out_dir = val_out_dir if case_name in val_cases else test_out_dir
+
+            with h5py.File(os.path.join(out_dir, vol_name), 'w') as f:
                 f.create_dataset("image", data=image_vol.astype(np.float32), compression="gzip")
                 f.create_dataset("label", data=label_vol.astype(np.uint8), compression="gzip")
 
-            val_volume_count += 1
+            if case_name in val_cases:
+                val_volume_count += 1
+            else:
+                test_volume_count += 1
 
-    print(f"PREPROCESSING COMPLETE!")
-    print(f"Training slices: {train_slice_count}")
-    print(f"Validation volumes: {val_volume_count}")
+    print(f"\nPREPROCESSING COMPLETE!")
+    print(f"Training slices:     {train_slice_count}")
+    print(f"Validation volumes:  {val_volume_count}")
+    print(f"Test volumes:        {test_volume_count}")
     print(f"\nOutput:")
-    print(f"  Train: {train_out_dir}")
-    print(f"  Validation: {test_out_dir}")
+    print(f"  Train:      {train_out_dir}")
+    print(f"  Validation: {val_out_dir}")
+    print(f"  Test:       {test_out_dir}")
 
 
 # def debug_disk_data():
