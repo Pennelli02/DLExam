@@ -118,7 +118,7 @@ def setup_synapse_dataset():
         print("\n Setup incomplete - check directory structure")
         return False
 
-
+# split 60/20/20
 def preprocess_synapse(random_seed=None, train_ratio=0.6):
     """
     Preprocessing del dataset Synapse con MAPPING CORRETTO delle classi

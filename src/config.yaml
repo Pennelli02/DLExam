@@ -23,6 +23,7 @@ n_classes: 9
 
 train_dir: "dataset/project_transunet/train_npz"
 validation_dir: "dataset/project_transunet/validation_vol_h5"
+testing_dir: "dataset/project_transunet/testing_vol_h5"
 
 log_every: 25
 batch_window: 50
@@ -34,4 +35,4 @@ save_dir: 'val_images'
 resume: False # impostato così (True) indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]
 
-testing_dir: "transunet_ckp_v2/e_00076.chp" # qui mettiamo il checkpoint che vogliamo testare
+testing_chp: "transunet_ckp_v2/e_00076.chp" # qui mettiamo il checkpoint che vogliamo testare

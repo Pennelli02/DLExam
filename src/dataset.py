@@ -65,7 +65,7 @@ class SynapseDataset(Dataset):
             image, label = data['image'], data['label']
 
         else:
-            #MODALITA' VALIDATION:  carica volume 3D da file .h5
+            #MODALITA' VALIDATION E TESTING:  carica volume 3D da file .h5
 
             # Prende il nome del volume e rimuove '\n'
             vol_name = self.sample_list[idx].strip('\n')

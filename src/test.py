@@ -122,7 +122,7 @@ if __name__ == "__main__":
             optimizer=None,
             scheduler=None,
             opts=opts,
-            checkpoint_path=opts.testing_dir  # None = prende l'ultimo automaticamente
+            checkpoint_path=opts.testing_chp  # None = prende l'ultimo automaticamente
         )
 
         if checkpoint is None:
