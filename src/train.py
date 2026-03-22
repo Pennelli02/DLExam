@@ -193,8 +193,8 @@ def validate_model(model, valid_loader, opts):
 
         results[resize_type] = (avg_dice, avg_hd95, mean_per_organ)
 
-    # Ritorna i risultati v2 come prima (compatibilità con train_loop)
-    return results["v2"]
+
+    return results
 
 
 def train_loop(model, train, valid, opts):
@@ -371,20 +371,17 @@ def train_loop(model, train, valid, opts):
         if epoch % opts.validation_frequency == 0:
             LOG.info(f" VALIDAZIONE Volumetrica")
 
-            val_dice, val_hd95, per_organ_metrics = validate_model(model, valid, opts)
+            results = validate_model(model, valid, opts)
 
+            # TensorBoard validation metrics — separati per resize_type
+            for resize_type, (val_dice, val_hd95, per_organ_metrics) in results.items():
+                with val_writer.as_default():
+                    tf.summary.scalar(f'metrics/{resize_type}/dice_avg', val_dice, step=epoch)
+                    tf.summary.scalar(f'metrics/{resize_type}/hd95_avg', val_hd95, step=epoch)
 
-            # TensorBoard validation metrics
-            with val_writer.as_default():
-                tf.summary.scalar('metrics/dice_avg', val_dice, step=epoch)
-                tf.summary.scalar('metrics/hd95_avg', val_hd95, step=epoch)
-
-                # Metriche per organo
-                for i, organ_name in enumerate(organ_names):
-                    tf.summary.scalar(f'dice/{organ_name}', per_organ_metrics[i, 0], step=epoch)
-                    tf.summary.scalar(f'hd95/{organ_name}', per_organ_metrics[i, 1], step=epoch)
-
-
+                    for i, organ_name in enumerate(organ_names):
+                        tf.summary.scalar(f'dice/{resize_type}/{organ_name}', per_organ_metrics[i, 0], step=epoch)
+                        tf.summary.scalar(f'hd95/{resize_type}/{organ_name}', per_organ_metrics[i, 1], step=epoch)
 
             # Pulizia memoria GPU
             torch.cuda.empty_cache()

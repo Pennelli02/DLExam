@@ -132,6 +132,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     test_out_dir = os.path.join(output_dir, "test_vol_h5")
 
     os.makedirs(train_out_dir, exist_ok=True)
+    os.makedirs(val_out_dir, exist_ok=True)
     os.makedirs(test_out_dir, exist_ok=True)
 
     # Lista immagini
@@ -715,11 +716,11 @@ def test_single_volumeSy(image, label, net, classes, patch_size=[224, 224],
     return metric_list
 
 if __name__ == "__main__":
-    inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
-    mock_test()
+    #inspect_h5_file("dataset/project_transunet/validation_vol_h5/img0001.npy.h5")
+    #mock_test()
     #inspect_npz("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
     #debug_disk_data()
-    #preprocess_synapse()
+    preprocess_synapse(123)
     # Test su tutti i file validation
     # validation_dir = "dataset/project_transunet/validation_vol_h5"
     # for h5_file in sorted(Path(validation_dir).glob("*.h5")):

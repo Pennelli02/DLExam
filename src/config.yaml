@@ -1,5 +1,5 @@
 pre_trained: True # scelgo con vero o falso se usare il modello pretrained e non
-model_name: "TransUNet" #(TransUNet or NPTransUNet)
+model_name: "transunet_2conv" #(TransUNet or NPTransUNet)
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
 checkpoint_net: True # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
@@ -23,15 +23,15 @@ n_classes: 9
 
 train_dir: "dataset/project_transunet/train_npz"
 validation_dir: "dataset/project_transunet/validation_vol_h5"
-testing_dir: "dataset/project_transunet/testing_vol_h5"
+testing_dir: "dataset/project_transunet/test_vol_h5"
 
 log_every: 25
 batch_window: 50
 save_every: 19 # così otteniamo 8 checkpoint
-checkpoint_dir: 'transunet_ckp_v2'
-validation_frequency: 4 # valida ogni 8 epoche invece di ogni epoca (38 per testare in maniera veloce il modello)
+checkpoint_dir: 'transunet_ckp'
+validation_frequency: 8 # valida ogni 8 epoche invece di ogni epoca (38 per testare in maniera veloce il modello)
 
-save_dir: 'val_images'
+save_dir: 'test_images'
 resume: False # impostato così (True) indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]
 

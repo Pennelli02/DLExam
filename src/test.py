@@ -90,7 +90,6 @@ def inference(net, valid_loader, opts, resize_type="scipy"):
 
     return avg_dice, avg_hd95, mean_per_organ
 
-#FIXME NON FUNZIONA IL CARICAMENTO DEI CHECKPOINT PER FARE INFERENZA
 
 if __name__ == "__main__":
         logging.basicConfig(
@@ -140,7 +139,7 @@ if __name__ == "__main__":
 
         test_dataset = SynapseDataset(
             opts=opts,
-            data_dir=opts.validation_dir,
+            data_dir=opts.testing_dir,
             split="test",
             transform=None
         )
@@ -148,7 +147,7 @@ if __name__ == "__main__":
             test_dataset,
             batch_size=1,
             shuffle=False,
-            num_workers=4,
+            num_workers=opts.num_workers,
             pin_memory=True  # velocizza trasferimento CPU→GPU
         )
 
