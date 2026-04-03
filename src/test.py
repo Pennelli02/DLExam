@@ -10,7 +10,7 @@ import yaml
 from scipy.ndimage import zoom
 from torch import nn
 
-from src.transUNet import CheckpointNet
+from src.transUNet import CheckpointNet, PT_TransUNet, NPT_TransUNet
 from utils import test_single_volume, test_single_volumeSy
 from train import load_checkpoint
 
@@ -111,8 +111,13 @@ if __name__ == "__main__":
         opts = SimpleNamespace(**opts)
         opts.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        # Costruzione modello
-        model = CheckpointNet(npz_path="PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+        if opts.pre_trained:
+            if opts.checkpoint_net:
+                model = CheckpointNet("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
+            else:
+                model = PT_TransUNet()
+        else:
+            model = NPT_TransUNet()
 
         # Caricamento corretto tramite load_checkpoint
         # optimizer e scheduler sono None perché siamo in inference, non training

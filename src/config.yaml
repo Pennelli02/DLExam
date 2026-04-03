@@ -1,8 +1,8 @@
 pre_trained: True # scelgo con vero o falso se usare il modello pretrained e non
-model_name: "transunet_2conv" #(TransUNet or NPTransUNet)
+model_name: "PT_Transunet" #(TransUNet or NPTransUNet)
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
-checkpoint_net: True # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
+checkpoint_net: False # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
 type_tr: "sgd"
 lr: 0.01 #sennò 0.01
 momentum: 0.9
@@ -28,11 +28,11 @@ testing_dir: "dataset/project_transunet/test_vol_h5"
 log_every: 25
 batch_window: 50
 save_every: 19 # così otteniamo 8 checkpoint
-checkpoint_dir: 'transunet_ckp'
+checkpoint_dir: 'transunet_ckp_test'
 validation_frequency: 8 # valida ogni 8 epoche invece di ogni epoca (38 per testare in maniera veloce il modello)
 
 save_dir: 'test_images'
 resume: False # impostato così (True) indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]
 
-testing_chp: "transunet_ckp_v2/e_00076.chp" # qui mettiamo il checkpoint che vogliamo testare
+testing_chp: "transunet_ckp_test/e_00152.chp" # qui mettiamo il checkpoint che vogliamo testare

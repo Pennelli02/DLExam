@@ -251,124 +251,6 @@ uso del checkpoint non sembra migliorare come funziona il modello poi a fine tra
 - valutare se pesi caricati correttamente caricati in modo giusto
 
 L'errore sembra essere che dato che sto usando un modello di Big Transfer devo attuare delle pre trasformazioni per far si che il transfer learning funzioni
-## Quinto training
-deludente: Dice: 0.6113 | HD95: 47.48
-
-## Sesto training
-Dice: 0.71 HD95: 34
-
-focus su organi:
-                    ==============================================             
-                    ==============                                             
-           INFO      RISULTATI VALIDAZIONE                         train.py:174
-           INFO     ============================================== train.py:175
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8187 | HD95: 12.26  train.py:180
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.4297 | HD95: 28.92  train.py:180
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.7903 | HD95: 74.93  train.py:180
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7039 | HD95: 46.11  train.py:180
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9273 | HD95: 35.76  train.py:180
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.4884 | HD95: 17.05  train.py:180
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8424 | HD95: 48.95  train.py:180
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.6811 | HD95: 15.83  train.py:180
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7102 | HD95: 34.98  train.py:182
-                    mm 
-
-# Visualizzazione e Explainability
-Valutare se usare GRAD-CAM per Segmentation
-
-# Vari risultati di testing
-
-           INFO      RISULTATI VALIDAZIONE                         train.py:180
-           INFO     ============================================== train.py:181
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8288 | HD95: 18.66  train.py:186
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.5326 | HD95: 49.89  train.py:186
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.7667 | HD95: 53.64  train.py:186
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7202 | HD95: 38.66  train.py:186
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9430 | HD95: 27.70  train.py:186
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.5986 | HD95: 11.74  train.py:186
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8605 | HD95: 45.82  train.py:186
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.7856 | HD95: 27.80  train.py:186
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7545 | HD95: 34.24  train.py:188
-                    mm
-
-
-INFO     MEDIA TOTALE    -> Dice: 0.7436 | HD95: 32.32  train.py:188
-                    mm
-
-MEDIA TOTALE    -> Dice: 0.7677 | HD95: 40.67  train.py:188    PT_Transunet
-
-[01:41:19] INFO      img0038 processato                            train.py:166
-           INFO                                                    train.py:179
-                    ==============================================             
-                    ==============                                             
-           INFO      RISULTATI VALIDAZIONE                         train.py:180
-           INFO     ============================================== train.py:181
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8214 | HD95: 9.20   train.py:186
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.5663 | HD95: 20.20  train.py:186
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.8041 | HD95: 48.36  train.py:186
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7598 | HD95: 47.96  train.py:186
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9322 | HD95: 36.18  train.py:186
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.5247 | HD95: 14.66  train.py:186
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8300 | HD95: 26.02  train.py:186
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.7315 | HD95: 16.30  train.py:186
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7463 | HD95: 27.36  train.py:188
-                    mm                                                         
-
-risultati CheckpointNet (checkpoint_v3)
-
-
-           INFO      RISULTATI VALIDAZIONE                         train.py:180
-           INFO     ============================================== train.py:181
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8165 | HD95: 10.95  train.py:186
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.5847 | HD95: 18.84  train.py:186
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.7573 | HD95: 54.07  train.py:186
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7288 | HD95: 43.70  train.py:186
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9351 | HD95: 34.77  train.py:186
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.5184 | HD95: 15.61  train.py:186
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8548 | HD95: 37.20  train.py:186
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.7442 | HD95: 14.81  train.py:186
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7425 | HD95: 28.74  train.py:188
-                    mm                                                         
-[13:24:44] INFO     Saved checkpoint transunet_ckp_v2\e_00152.chp   train.py:44
-
-INFO     MEDIA TOTALE    -> Dice: 0.7499 | HD95: 26.29  train.py:198
-
 
 ### Osservazioni
 notiamo che con un seed fissato e l'utilizzo del modello checkpointnet che un aumento dei layer convoluzionali (conv3x3->bn->relu) diminuisce il valore di HD95 medio, ma non influenza i valori di DSC
@@ -377,77 +259,6 @@ notiamo che in genere il modello PT_Transunet genera valori con alto DSC a disca
 **Ovviamente bisogna capire cosa abbassi di 3% la DSC media nel test**
 
 **Gli organi che influiscono tanto sono Gallbladder e Pancreas**
-
-
-
-### checkpoint 4
-PT_transunet
-[02:02:07] INFO      img0038 processato                            train.py:181
-[02:02:08] INFO                                                    train.py:188
-                    ==============================================             
-                    ==============                                             
-           INFO      RISULTATI VALIDAZIONE (resize_type='v2')      train.py:189
-           INFO     ============================================== train.py:190
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8255 | HD95: 7.93   train.py:192
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.5747 | HD95: 45.31  train.py:192
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.7897 | HD95: 55.21  train.py:192
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7485 | HD95: 77.06  train.py:192
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9358 | HD95: 32.10  train.py:192
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.5607 | HD95: 11.95  train.py:192
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8616 | HD95: 64.04  train.py:192
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.8011 | HD95: 16.80  train.py:192
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7622 | HD95: 38.80  train.py:193
-                    mm                                                         
-           INFO      Validazione volumetrica avviata               train.py:164
-                    (resize_type='scipy')...                                   
-[02:03:44] INFO      img0001 processato                            train.py:181
-[02:05:10] INFO      img0002 processato                            train.py:181
-[02:07:19] INFO      img0003 processato                            train.py:181
-[02:08:47] INFO      img0004 processato                            train.py:181
-[02:10:21] INFO      img0008 processato                            train.py:181
-[02:11:11] INFO      img0022 processato                            train.py:181
-[02:11:59] INFO      img0025 processato                            train.py:181
-[02:12:55] INFO      img0029 processato                            train.py:181
-[02:14:25] INFO      img0032 processato                            train.py:181
-[02:15:12] INFO      img0035 processato                            train.py:181
-[02:17:17] INFO      img0036 processato                            train.py:181
-[02:18:14] INFO      img0038 processato                            train.py:181
-[02:18:15] INFO                                                    train.py:188
-                    ==============================================             
-                    ==============                                             
-           INFO      RISULTATI VALIDAZIONE (resize_type='scipy')   train.py:189
-           INFO     ============================================== train.py:190
-                    ==============                                             
-           INFO     Aorta           -> Dice: 0.8408 | HD95: 7.77   train.py:192
-                    mm                                                         
-           INFO     Gallbladder     -> Dice: 0.4955 | HD95: 45.17  train.py:192
-                    mm                                                         
-           INFO     Left Kidney     -> Dice: 0.7854 | HD95: 47.46  train.py:192
-                    mm                                                         
-           INFO     Right Kidney    -> Dice: 0.7265 | HD95: 70.49  train.py:192
-                    mm                                                         
-           INFO     Liver           -> Dice: 0.9269 | HD95: 29.38  train.py:192
-                    mm                                                         
-           INFO     Pancreas        -> Dice: 0.4789 | HD95: 16.20  train.py:192
-                    mm                                                         
-           INFO     Spleen          -> Dice: 0.8285 | HD95: 95.14  train.py:192
-                    mm                                                         
-           INFO     Stomach         -> Dice: 0.7544 | HD95: 18.95  train.py:192
-                    mm                                                         
-           INFO     MEDIA TOTALE    -> Dice: 0.7296 | HD95: 41.32  train.py:193
-                    mm                                                         
-[02:18:16] INFO     Saved checkpoint transunet_ckp_v4\e_00152.chp   train.py:45
-           INFO      End training
-
 
 ### checkpoint 1
 CheckpointNet con doppio layer convoluzionale
@@ -568,3 +379,33 @@ CheckpointNet con doppio layer convoluzionale
                     mm                                                         
 [19:56:20] INFO     Saved checkpoint transunet_ckp_test\e_00152.chp train.py:44
            INFO      End training 
+---
+## Situazione attuale
+- **training**: 18 scan mediche suddivise in slices
+- **validation**: 6 scan mediche in 3d 
+- **testing**: 6 scan mediche in 3d
+
+Miglior risultato ottenuto *(però non ho seguito la situazione attuale)*: transunet_ckp_v2/e_00076.chp 
+
+
+
+## Risultati
+### checkpoint
+otteniamo soprattutto a causa della divisione dei risultati sovrastimati con il paper
+architettura classica con doppia convoluzione nel decoder
+
+    INFO     scipy  -> Dice: 0.6591 | HD95: 36.88 mm         test.py:174
+    INFO     v2     -> Dice: 0.6560 | HD95: 36.93 mm         test.py:174
+### checkpointv1
+architettura classica con singola convoluzione nel decoder
+
+    INFO     scipy  -> Dice: 0.6689 | HD95: 41.63 mm         test.py:174
+    INFO     v2     -> Dice: 0.6682 | HD95: 41.81 mm         test.py:174
+### checkpointv2
+architettura del checkpoint però a differenza degli altri checkpoint non è presente la separazione tra validation e testing, ma solo training e validation per avere un confronto con il paper
+
+### checkpoint test
+Architettura: PT_transunet
+
+    INFO     scipy  -> Dice: 0.6574 | HD95: 43.20 mm         test.py:179
+    INFO     v2     -> Dice: 0.6797 | HD95: 42.36 mm         test.py:179

@@ -159,15 +159,15 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     }
 
     if random_seed is None:
-        # Split ufficiale del paper
-        train_ids = [5, 6, 7, 9, 10, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 37, 39, 40]
-        train_cases = [f"img{i:04d}" for i in train_ids]
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
-        remaining_cases = [c for c in all_cases if c not in train_cases]
 
-        # Primi 6 → validation, ultimi 6 → test
-        val_cases = remaining_cases[:6]
-        test_cases = remaining_cases[6:]
+        split_idx = int(len(all_cases) * 0.6)
+        train_cases = all_cases[:split_idx]
+        remaining_cases = all_cases[split_idx:]
+
+        # 12 casi di validazione come da paper e zero di testing
+        val_cases = remaining_cases
+        test_cases = []
 
     else:
         random.seed(random_seed)
@@ -177,7 +177,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
         train_cases = all_cases[:n_train]
         remaining_cases = all_cases[n_train:]
 
-        # Metà → validation, metà → test
+        # Metà -> validation, metà -> test
         half = len(remaining_cases) // 2
         val_cases = remaining_cases[:half]
         test_cases = remaining_cases[half:]
@@ -273,78 +273,6 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
     print(f"  Validation: {val_out_dir}")
     print(f"  Test:       {test_out_dir}")
 
-
-# def debug_disk_data():
-#     train_dir = "dataset/project_transunet/train_npz"
-#     val_dir = "dataset/project_transunet/validation_vol_h5"
-#
-#     print("=" * 50)
-#     print("DEBUG DATI PROCESSATI SU DISCO")
-#     print("=" * 50)
-#
-#     # 1. Controllo Campione Training (.npz)
-#     train_files = list(Path(train_dir).glob("*.npz"))
-#     if train_files:
-#         sample_train = train_files[0]
-#         data = np.load(sample_train)
-#         img, lab = data['image'], data['label']
-#         print(f"\n[TRAINING SLICE] {sample_train.name}")
-#         print(f"  Shape: {img.shape}")
-#         print(f"  Range Pixel: [{img.min():.4f}, {img.max():.4f}]")
-#         print(f"  Classi Label: {np.unique(lab)}")
-#
-#         if img.max() > 1.0 or img.min() < 0.0:
-#             print("  (!) ATTENZIONE: I dati di training non sono nel range [0, 1]!")
-#     else:
-#         print("\n[!] Nessun file .npz trovato in training.")
-#
-#     # 2. Controllo Campione Validazione (.h5)
-#     val_files = list(Path(val_dir).glob("*.h5"))
-#     if val_files:
-#         sample_val = val_files[0]
-#         with h5py.File(sample_val, 'r') as f:
-#             img = f['image'][:]
-#             lab = f['label'][:]
-#         print(f"\n[VALIDATION VOLUME] {sample_val.name}")
-#         print(f"  Shape: {img.shape} (Z, H, W)")
-#         print(f"  Range Pixel: [{img.min():.4f}, {img.max():.4f}]")
-#         print(f"  Classi Label: {np.unique(lab)}")
-#
-#         if img.min() < 0 or img.max() > 1:
-#             print("  (!) ERRORE CRITICO: Il volume di validazione ha range HU grezzo!")
-#             print("      Il training vede [0,1], la validazione vede HU. Il Dice sarà bassissimo.")
-#     else:
-#         print("\n[!] Nessun file .h5 trovato in validazione.")
-#
-#     # 3. Verifica Coerenza Mapping
-#     # Se il fegato è la classe 5 nel training, deve esserlo anche nel test
-#     print("\n" + "=" * 50)
-
-# def calculate_metric_percase2(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
-#         """
-#         Calcola Dice e HD95 assicurandosi che le maschere non siano vuote.
-#         """
-#         # Convertiamo in binario (0 sfondo, 1 qualsiasi organo)
-#         pred = (pred > 0).astype(float)
-#         gt = (gt > 0).astype(float)
-#
-#         # Caso 1: Entrambi hanno l'organo (Situazione standard)
-#         if pred.sum() > 0 and gt.sum() > 0:
-#             dice = metric.binary.dc(pred, gt)
-#             hd95 = metric.binary.hd95(pred, gt)
-#             return dice, hd95
-#
-#         # Caso 2: Il modello trova un organo che non esiste (Falso Positivo)
-#         # Il Dice è 0, la distanza HD95 non è definibile (spesso si mette un valore alto di default)
-#         if pred.sum() > 0 and gt.sum() == 0:
-#             return 0.0, 100.0  # 100mm è una penalità standard
-#
-#         # Caso 3: L'organo esiste ma il modello non vede nulla (Falso Negativo)
-#         if pred.sum() == 0 and gt.sum() > 0:
-#             return 0.0, 100.0
-#
-#         # Caso 4: Entrambi vuoti (Il modello ha predetto correttamente lo sfondo)
-#         return 1.0, 0.0
 
 def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, float]:
     """
