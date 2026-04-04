@@ -409,3 +409,141 @@ Architettura: PT_transunet
 
     INFO     scipy  -> Dice: 0.6574 | HD95: 43.20 mm         test.py:179
     INFO     v2     -> Dice: 0.6797 | HD95: 42.36 mm         test.py:179
+
+---
+## Testing singolo paziente
+osservando i risultati del singolo paziente notiamo che otteniamo valori sottostimati perché essendo che abbiamo pochi casi di test (6) e tanta variabilità il valore medio ne risente
+Infatti, si osserva in questo mio contesto:
+
+    ────────────────────────────────────────────────           
+    ──                                                         
+    INFO      Paziente: img0002                               test.py:69
+    INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.8371 |       5.74          test.py:78
+           INFO     Gallbladder     |   0.6582 |       5.39          test.py:78
+           INFO     Left Kidney     |   0.9329 |       1.73          test.py:78
+           INFO     Right Kidney    |   0.8760 |       3.61          test.py:78
+           INFO     Liver           |   0.9510 |       3.46          test.py:78
+           INFO     Pancreas        |   0.5432 |       9.27          test.py:78
+           INFO     Spleen          |   0.9345 |       1.41          test.py:78
+           INFO     Stomach         |   0.8638 |       4.90          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.8246 |       4.44          test.py:84
+    [14:44:55] INFO                                                      test.py:68
+                    ────────────────────────────────────────────────           
+                    ──                                                         
+           INFO      Paziente: img0003                               test.py:69
+           INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.7402 |      20.35          test.py:78
+           INFO     Gallbladder     |   0.1580 |      24.12          test.py:78
+           INFO     Left Kidney     |   0.2964 |     153.39          test.py:78
+           INFO     Right Kidney    |   0.4716 |     155.01          test.py:78
+           INFO     Liver           |   0.8642 |     124.14          test.py:78
+           INFO     Pancreas        |   0.3642 |      41.70          test.py:78
+           INFO     Spleen          |   0.6236 |     220.88          test.py:78
+           INFO     Stomach         |   0.6946 |      33.67          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.5266 |      96.66          test.py:84
+    [14:46:51] INFO                                                      test.py:68
+                    ────────────────────────────────────────────────           
+                    ──                                                         
+           INFO      Paziente: img0009                               test.py:69
+           INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.7299 |      27.33          test.py:78
+           INFO     Gallbladder     |   0.0000 |     163.81          test.py:78
+           INFO     Left Kidney     |   0.0643 |     121.88          test.py:78
+           INFO     Right Kidney    |   0.0000 |     148.46          test.py:78
+           INFO     Liver           |   0.4642 |      90.53          test.py:78
+           INFO     Pancreas        |   0.2041 |      22.11          test.py:78
+           INFO     Spleen          |   0.0025 |     152.93          test.py:78
+           INFO     Stomach         |   0.6575 |      33.73          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.2653 |      95.10          test.py:84
+    [14:48:05] INFO                                                      test.py:68
+                    ────────────────────────────────────────────────           
+                    ──                                                         
+           INFO      Paziente: img0024                               test.py:69
+           INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.8853 |       2.45          test.py:78
+           INFO     Gallbladder     |   0.0000 |      66.82          test.py:78
+           INFO     Left Kidney     |   0.9121 |       2.00          test.py:78
+           INFO     Right Kidney    |   0.9091 |       4.00          test.py:78
+           INFO     Liver           |   0.9262 |      20.27          test.py:78
+           INFO     Pancreas        |   0.5580 |      20.35          test.py:78
+           INFO     Spleen          |   0.9515 |       2.00          test.py:78
+           INFO     Stomach         |   0.6903 |      10.82          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.7291 |      16.09          test.py:84
+    [14:48:52] INFO                                                      test.py:68
+                    ────────────────────────────────────────────────           
+                    ──                                                         
+           INFO      Paziente: img0035                               test.py:69
+           INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.5507 |      14.77          test.py:78
+           INFO     Gallbladder     |   1.0000 |       0.00          test.py:78
+           INFO     Left Kidney     |   0.9041 |       2.00          test.py:78
+           INFO     Right Kidney    |   0.8808 |       2.00          test.py:78
+           INFO     Liver           |   0.9412 |       5.00          test.py:78
+           INFO     Pancreas        |   0.6016 |       9.00          test.py:78
+           INFO     Spleen          |   0.9463 |       1.41          test.py:78
+           INFO     Stomach         |   0.6966 |       7.87          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.8152 |       5.26          test.py:84
+    [14:49:42] INFO                                                      test.py:68
+                    ────────────────────────────────────────────────           
+                    ──                                                         
+           INFO      Paziente: img0039                               test.py:69
+           INFO     ──────────────────────────────────────────────── test.py:70
+                    ──                                                         
+           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
+           INFO     ────────────────────────────────────────         test.py:72
+           INFO     Aorta           |   0.5752 |       4.00          test.py:78
+           INFO     Gallbladder     |   0.7300 |       3.00          test.py:78
+           INFO     Left Kidney     |   0.8243 |       3.00          test.py:78
+           INFO     Right Kidney    |   0.8016 |       3.00          test.py:78
+           INFO     Liver           |   0.9523 |       2.24          test.py:78
+           INFO     Pancreas        |   0.6388 |      10.77          test.py:78
+           INFO     Spleen          |   0.9494 |       1.41          test.py:78
+           INFO     Stomach         |   0.8812 |       2.24          test.py:78
+           INFO     ────────────────────────────────────────         test.py:83
+           INFO     MEDIA PAZIENTE  |   0.7941 |       3.71          test.py:84
+    [14:49:43] INFO                                                      test.py:97
+                    ================================================           
+                    ============                                               
+           INFO      RISULTATI TESTING (resize_type='scipy')         test.py:98
+           INFO     ================================================ test.py:99
+                    ============                                               
+           INFO     Aorta           -> Dice: 0.7197 | HD95: 12.44   test.py:104
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.4244 | HD95: 43.86   test.py:104
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.6557 | HD95: 47.33   test.py:104
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.6565 | HD95: 52.68   test.py:104
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.8499 | HD95: 40.94   test.py:104
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.4850 | HD95: 18.87   test.py:104
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.7346 | HD95: 63.34   test.py:104
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7473 | HD95: 15.54   test.py:104
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.6591 | HD95: 36.88   test.py:106
+                    mm                                                         
+           INFO 

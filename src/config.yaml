@@ -2,7 +2,7 @@ pre_trained: True # scelgo con vero o falso se usare il modello pretrained e non
 model_name: "PT_Transunet" #(TransUNet or NPTransUNet)
 dataset_type: "Synapse" #scelgo che tipo di dataset usare. (Synapse, ACDC)
 
-checkpoint_net: False # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
+checkpoint_net: True # per settare l'utilizzo dei modelli pretrained presenti nella cartella PreTrainedModels
 type_tr: "sgd"
 lr: 0.01 #sennò 0.01
 momentum: 0.9
@@ -35,4 +35,4 @@ save_dir: 'test_images'
 resume: False # impostato così (True) indico di prendere l'ultimo checkpoint
 validation: True #valutiamo la validation con [17] [19]
 
-testing_chp: "transunet_ckp_test/e_00152.chp" # qui mettiamo il checkpoint che vogliamo testare
+testing_chp: "transunet_ckp/e_00152.chp" # qui mettiamo il checkpoint che vogliamo testare

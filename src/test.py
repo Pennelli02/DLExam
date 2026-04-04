@@ -64,7 +64,24 @@ def inference(net, valid_loader, opts, resize_type="scipy"):
                 case=case_name
             )
             performance_buffer.append(case_metrics)
-            LOG.info(f" {case_name} processato")
+            # --- LOG PER SINGOLO PAZIENTE ---
+            LOG.info(f"\n{'─' * 50}")
+            LOG.info(f" Paziente: {case_name}")
+            LOG.info(f"{'─' * 50}")
+            LOG.info(f"{'Organo':15s} | {'Dice':>8} | {'HD95 (mm)':>10}")
+            LOG.info(f"{'─' * 40}")
+
+            # Ciclo sugli organi per stampare i risultati del paziente corrente
+            for idx, organ_name in enumerate(ORGAN_NAMES):
+                dice = case_metrics[idx][0]
+                hd95 = case_metrics[idx][1]
+                LOG.info(f"{organ_name:15s} | {dice:8.4f} | {hd95:10.2f}")
+
+            # Calcolo e stampa della media per QUESTO paziente
+            case_mean_dice = np.mean([m[0] for m in case_metrics])
+            case_mean_hd95 = np.mean([m[1] for m in case_metrics])
+            LOG.info(f"{'─' * 40}")
+            LOG.info(f"{'MEDIA PAZIENTE':15s} | {case_mean_dice:8.4f} | {case_mean_hd95:10.2f}")
 
     # [Num_Pazienti, Num_Organi, 2]
     performance_buffer = np.array(performance_buffer)
