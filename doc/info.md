@@ -61,7 +61,7 @@ x = x.permute(0, 3, 1, 2).contiguous()
 ### Upsample
 nel codice si è riscontrato un problema dovuto alla scelta di quale operatore per fare upsampling:
 - nn.convTraspose2d() trainable
-- nn.unSample() not trainable 
+- nn.upSample() not trainable 
 
 Sembra dai forum di pytorch che per la segmentazione sia meglio upSample() per la segmentazione quindi procedo.
 
@@ -88,9 +88,9 @@ La **skip1** viene salvata **subito dopo Conv1 + BatchNorm + ReLU**, quando l'im
 ```
 Input: 224x224x3
    ↓ Conv1 (kernel=7, stride=2, padding=3)
-112x112x64  ← Skip1 salvata QUI! (64 canali)
+112x112x64  
    ↓ BatchNorm + ReLU
-112x112x64
+112x112x64 ← Skip1 salvata qui (64 canali)
    ↓ MaxPool (kernel=3, stride=2, padding=1)
 56x56x64
    ↓ Layer1 (3x Bottleneck blocks)
