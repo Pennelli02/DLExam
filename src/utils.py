@@ -299,7 +299,6 @@ def calculate_metric_percase(pred: np.ndarray, gt: np.ndarray) -> tuple[float, f
     return 0, 0
 
 
-
 def mock_test():
      # 1. Configurazione Parametri
      device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
