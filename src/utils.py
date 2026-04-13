@@ -160,7 +160,7 @@ def preprocess_synapse(random_seed=None, train_ratio=0.6):
 
     if random_seed is None:
         all_cases = [os.path.basename(p).replace(".nii.gz", "") for p in image_list]
-
+        random.shuffle(all_cases)
         split_idx = int(len(all_cases) * 0.6)
         train_cases = all_cases[:split_idx]
         remaining_cases = all_cases[split_idx:]
@@ -647,7 +647,7 @@ if __name__ == "__main__":
     #mock_test()
     #inspect_npz("PreTrainedModels/imagenet21k/R50+ViT-B_16.npz")
     #debug_disk_data()
-    preprocess_synapse(123)
+    preprocess_synapse()
     # Test su tutti i file validation
     # validation_dir = "dataset/project_transunet/validation_vol_h5"
     # for h5_file in sorted(Path(validation_dir).glob("*.h5")):

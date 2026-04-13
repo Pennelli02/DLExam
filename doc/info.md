@@ -286,18 +286,7 @@ CheckpointNet con doppio layer convoluzionale
                     mm                                                         
            INFO      Validazione volumetrica avviata               train.py:164
                     (resize_type='scipy')...                                   
-[10:02:18] INFO      img0001 processato                            train.py:181
-[10:03:46] INFO      img0002 processato                            train.py:181
-[10:06:06] INFO      img0003 processato                            train.py:181
-[10:07:33] INFO      img0004 processato                            train.py:181
-[10:09:08] INFO      img0008 processato                            train.py:181
-[10:09:58] INFO      img0022 processato                            train.py:181
-[10:10:46] INFO      img0025 processato                            train.py:181
-[10:11:44] INFO      img0029 processato                            train.py:181
-[10:13:16] INFO      img0032 processato                            train.py:181
-[10:14:02] INFO      img0035 processato                            train.py:181
-[10:16:07] INFO      img0036 processato                            train.py:181
-[10:17:05] INFO      img0038 processato                            train.py:181
+                                train.py:181
            INFO                                                    train.py:188
                     ==============================================             
                     ==============                                             
@@ -326,8 +315,8 @@ CheckpointNet con doppio layer convoluzionale
 
 ### checkpoint test
 
-[18:38:31] INFO      img0038 processato                            train.py:180
-[18:38:32] INFO                                                    train.py:187
+    [18:38:31] INFO      img0038 processato                            train.py:180
+    [18:38:32] INFO                                                    train.py:187
                     ==============================================             
                     ==============                                             
            INFO      RISULTATI VALIDAZIONE (resize_type='v2')      train.py:188
@@ -377,8 +366,60 @@ CheckpointNet con doppio layer convoluzionale
                     mm                                                         
            INFO     MEDIA TOTALE    -> Dice: 0.7535 | HD95: 29.00  train.py:192
                     mm                                                         
-[19:56:20] INFO     Saved checkpoint transunet_ckp_test\e_00152.chp train.py:44
+    [19:56:20] INFO     Saved checkpoint transunet_ckp_test\e_00152.chp train.py:44
            INFO      End training 
+### checkpoint rep
+architettura classica con una sola conv ma con split diverso
+  
+  INFO      RISULTATI VALIDAZIONE (resize_type='v2')      train.py:188
+           INFO     ============================================== train.py:189
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8322 | HD95: 11.85  train.py:191
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.6953 | HD95: 7.31   train.py:191
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7862 | HD95: 87.86  train.py:191
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7581 | HD95: 53.08  train.py:191
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9409 | HD95: 15.66  train.py:191
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.4826 | HD95: 21.77  train.py:191
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8689 | HD95: 71.83  train.py:191
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7316 | HD95: 15.80  train.py:191
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7620 | HD95: 35.65  train.py:192
+                    mm                                                         
+           INFO      Validazione volumetrica avviata               train.py:163
+                    (resize_type='scipy')...                                   
+        INFO                                                    train.py:187
+                    ==============================================             
+                    ==============                                             
+           INFO      RISULTATI VALIDAZIONE (resize_type='scipy')   train.py:188
+           INFO     ============================================== train.py:189
+                    ==============                                             
+           INFO     Aorta           -> Dice: 0.8454 | HD95: 11.77  train.py:191
+                    mm                                                         
+           INFO     Gallbladder     -> Dice: 0.6809 | HD95: 8.06   train.py:191
+                    mm                                                         
+           INFO     Left Kidney     -> Dice: 0.7861 | HD95: 88.03  train.py:191
+                    mm                                                         
+           INFO     Right Kidney    -> Dice: 0.7553 | HD95: 75.67  train.py:191
+                    mm                                                         
+           INFO     Liver           -> Dice: 0.9396 | HD95: 16.22  train.py:191
+                    mm                                                         
+           INFO     Pancreas        -> Dice: 0.4785 | HD95: 21.21  train.py:191
+                    mm                                                         
+           INFO     Spleen          -> Dice: 0.8678 | HD95: 70.96  train.py:191
+                    mm                                                         
+           INFO     Stomach         -> Dice: 0.7283 | HD95: 16.37  train.py:191
+                    mm                                                         
+           INFO     MEDIA TOTALE    -> Dice: 0.7602 | HD95: 38.54  train.py:192
+                    mm
+
+
 ---
 ## Situazione attuale
 - **training**: 18 scan mediche suddivise in slices
@@ -417,24 +458,23 @@ Infatti, si osserva in questo mio contesto:
 
     ────────────────────────────────────────────────           
     ──                                                         
-    INFO      Paziente: img0002                               test.py:69
-    INFO     ──────────────────────────────────────────────── test.py:70
-                    ──                                                         
-           INFO     Organo          |     Dice |  HD95 (mm)          test.py:71
-           INFO     ────────────────────────────────────────         test.py:72
-           INFO     Aorta           |   0.8371 |       5.74          test.py:78
-           INFO     Gallbladder     |   0.6582 |       5.39          test.py:78
-           INFO     Left Kidney     |   0.9329 |       1.73          test.py:78
-           INFO     Right Kidney    |   0.8760 |       3.61          test.py:78
-           INFO     Liver           |   0.9510 |       3.46          test.py:78
-           INFO     Pancreas        |   0.5432 |       9.27          test.py:78
-           INFO     Spleen          |   0.9345 |       1.41          test.py:78
-           INFO     Stomach         |   0.8638 |       4.90          test.py:78
-           INFO     ────────────────────────────────────────         test.py:83
-           INFO     MEDIA PAZIENTE  |   0.8246 |       4.44          test.py:84
+          Paziente: img0002                               test.py:69
+         ──────────────────────────────────────────────── test.py:70
+                Organo          |     Dice |  HD95 (mm)          test.py:71
+                ────────────────────────────────────────         test.py:72
+                Aorta           |   0.8371 |       5.74          test.py:78
+                Gallbladder     |   0.6582 |       5.39          test.py:78
+                Left Kidney     |   0.9329 |       1.73          test.py:78
+                Right Kidney    |   0.8760 |       3.61          test.py:78
+                Liver           |   0.9510 |       3.46          test.py:78
+                Pancreas        |   0.5432 |       9.27          test.py:78
+                Spleen          |   0.9345 |       1.41          test.py:78
+                Stomach         |   0.8638 |       4.90          test.py:78
+                ────────────────────────────────────────         test.py:83
+                MEDIA PAZIENTE  |   0.8246 |       4.44          test.py:84
     [14:44:55] INFO                                                      test.py:68
                     ────────────────────────────────────────────────           
-                    ──                                                         
+
            INFO      Paziente: img0003                               test.py:69
            INFO     ──────────────────────────────────────────────── test.py:70
                     ──                                                         

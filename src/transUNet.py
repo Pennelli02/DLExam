@@ -770,9 +770,9 @@ class CUP(nn.Module):
                 print(f"  skip_cnn[{i}]: {s.shape}")
             print()
         x = self.layer1(x, skip=None, debug=debug, first_block =True, block_name="layer1")
-        x = self.layer2(x, skip=skip_cnn[2], debug=debug, first_block =None , block_name="layer2")
-        x = self.layer3(x, skip=skip_cnn[1], debug=debug, first_block =None, block_name="layer3")
-        x = self.layer4(x, skip=skip_cnn[0], debug=debug, first_block =None, block_name="layer4")
+        x = self.layer2(x, skip=skip_cnn[2], debug=debug, first_block =True , block_name="layer2")
+        x = self.layer3(x, skip=skip_cnn[1], debug=debug, first_block =True, block_name="layer3")
+        x = self.layer4(x, skip=skip_cnn[0], debug=debug, first_block =True, block_name="layer4")
 
         if debug:
             print(f"\n  output finale: {x.shape}\n")
